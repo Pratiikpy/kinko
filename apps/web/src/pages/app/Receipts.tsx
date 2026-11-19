@@ -75,7 +75,8 @@ function Row({ p }: { p: PaymentRecord }) {
             <Copyable value={proof} label="Proof link" />
           ) : (
             <p className="text-sm text-warn">
-              The invoice terms for this payment were not kept, so a proof link cannot be built.
+              A proof link cannot be built for this payment: its invoice terms were not kept, or it
+              was made on an earlier version of the contract, whose links this version cannot read.
             </p>
           )}
           <div className="flex flex-wrap gap-2">

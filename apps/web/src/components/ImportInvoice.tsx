@@ -76,7 +76,7 @@ export function ImportInvoice() {
       );
       if (ownership === "taken") {
         throw new Error(
-          "An invoice with this commitment is already on chain, but it is not controlled by this file's owner secret or carries a different expiry. Someone else published it first, so you could not cancel or refund it. Make a new invoice and publish it before sharing its link.",
+          "An invoice with this commitment is already on chain, but with a different expiry from the one this file records. Check which file is the right one before relying on either.",
         );
       }
       if (ownership === "own") {

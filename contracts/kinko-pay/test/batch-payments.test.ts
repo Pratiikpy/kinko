@@ -16,7 +16,6 @@ import {
   InvoiceKind,
   KUSD,
   ledgerOf,
-  OWNER,
   type PayHarness,
   TokenKind,
 } from "./pay-fixtures.ts";
@@ -26,13 +25,14 @@ const PAYOUTS = [bytes32(0xd1), bytes32(0xd2), bytes32(0xd3), bytes32(0xd4)] as 
 const SALTS = [bytes32(0xb1), bytes32(0xb2), bytes32(0xb3), bytes32(0xb4)] as const;
 const AMOUNTS = [1_000n, 2_000n, 3_000n, 4_000n] as const;
 
-/** Every invoice in these suites is created by the default party, so they share one owner tag. */
-const OWNER_TAG = ownerTagOf(OWNER);
+/** Each invoice has its own owner, so an owner vector indexed wrongly names the wrong commitment. */
+const OWNERS = [bytes32(0xe1), bytes32(0xe2), bytes32(0xe3), bytes32(0xe4)] as const;
+const OWNER_TAGS = OWNERS.map((secret) => ownerTagOf(secret));
 
 const batch = (over: Partial<PayPrivateState> = {}): Partial<PayPrivateState> => ({
   batchAmounts: AMOUNTS,
   batchSalts: SALTS,
-  batchOwners: [OWNER_TAG, OWNER_TAG, OWNER_TAG, OWNER_TAG],
+  batchOwners: OWNER_TAGS,
   batchMerchants: MERCHANTS,
   batchPayouts: PAYOUTS.map((bytes) => ({ bytes })),
   batchIndices: [0n, 0n, 0n, 0n],
@@ -52,6 +52,7 @@ async function fourOpenInvoices(kind = InvoiceKind.STANDARD): Promise<PayHarness
         merchantPayout: { bytes: nth(PAYOUTS, i) },
         salt: nth(SALTS, i),
         amount: nth(AMOUNTS, i),
+        ownerSecret: nth(OWNERS, i),
       }),
     );
     await h.call("create_invoice", kind, TokenKind.KUSD, 0n);
@@ -118,6 +119,12 @@ describe("batch payments", () => {
       batch({
         batchAmounts: [AMOUNTS[0], AMOUNTS[0], AMOUNTS[0], AMOUNTS[0]],
         batchSalts: [SALTS[0], SALTS[0], SALTS[0], SALTS[0]],
+        batchOwners: [
+          nth(OWNER_TAGS, 0),
+          nth(OWNER_TAGS, 0),
+          nth(OWNER_TAGS, 0),
+          nth(OWNER_TAGS, 0),
+        ],
         batchMerchants: [MERCHANTS[0], MERCHANTS[0], MERCHANTS[0], MERCHANTS[0]],
         batchPayouts: [PAYOUTS[0], PAYOUTS[0], PAYOUTS[0], PAYOUTS[0]].map((bytes) => ({
           bytes,
@@ -141,6 +148,12 @@ describe("batch payments", () => {
       batch({
         batchAmounts: [AMOUNTS[0], AMOUNTS[0], AMOUNTS[2], AMOUNTS[3]],
         batchSalts: [SALTS[0], SALTS[0], SALTS[2], SALTS[3]],
+        batchOwners: [
+          nth(OWNER_TAGS, 0),
+          nth(OWNER_TAGS, 0),
+          nth(OWNER_TAGS, 2),
+          nth(OWNER_TAGS, 3),
+        ],
         batchMerchants: [MERCHANTS[0], MERCHANTS[0], MERCHANTS[2], MERCHANTS[3]],
         batchPayouts: [PAYOUTS[0], PAYOUTS[0], PAYOUTS[2], PAYOUTS[3]].map((bytes) => ({
           bytes,
@@ -165,6 +178,7 @@ describe("batch payments", () => {
         merchantPayout: { bytes: PAYOUTS[0] },
         salt: SALTS[0],
         amount: AMOUNTS[0],
+        ownerSecret: OWNERS[0],
       }),
     );
     await h.call("settle_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, coin(AMOUNTS[0], KUSD));

@@ -247,10 +247,10 @@ export function invoiceView(ledger: KinkoPay.Ledger, commitmentHex: string): Inv
 }
 
 /**
- * Whether an invoice on the ledger belongs to whoever holds an owner secret, and carries the expiry
- * its terms name. An invoice's link can be passed around before the merchant publishes it, and
- * whoever creates it first owns it, so a published invoice is only the merchant's own if its owner
- * tag is the one their secret hashes to.
+ * Whether an invoice on the ledger is the one a merchant's file describes: the same owner tag, which
+ * the commitment already binds, and the same expiry, which it does not. A different owner cannot
+ * reach the same commitment, so what this can still catch is an invoice published with another
+ * expiry than the file records.
  *
  * @param ledger - kinko_pay's ledger.
  * @param commitmentHex - The invoice's commitment.
