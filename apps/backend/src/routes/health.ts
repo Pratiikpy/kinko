@@ -57,7 +57,7 @@ export const healthRoutes = (d: RouteDeps): Route[] => {
           : { configured: false },
         assistant: d.assistant.configured ? "available" : "not configured",
         bot: d.config.botToken === undefined ? "not configured" : "available",
-        note: "This server never sees a private key or a witness, and holds an invoice amount only if its merchant supplied one.",
+        note: "This server never sees a user's key or a witness, and holds an invoice amount only if its merchant supplied one. It does hold the oracle's signing key, which signs NIGHT quotes.",
       },
     };
   };

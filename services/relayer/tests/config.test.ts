@@ -43,7 +43,7 @@ describe("loadConfig", () => {
       },
       engine: {
         pollIntervalMs: 3_000,
-        stageTimeoutMs: 1_500_000,
+        stageTimeoutMs: 3_600_000,
         maxConsecutiveFailures: 8,
         rebroadcastIntervalMs: 300_000,
         serveUnregistered: true,

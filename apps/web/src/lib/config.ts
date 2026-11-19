@@ -84,6 +84,12 @@ export const CONTRACTS = {
   disclosure: hex32(env.VITE_KINKO_DISCLOSURE_ADDRESS),
 } as const;
 
+/**
+ * The MPC's published root public key (SEC1 hex or NEAR form), which every deposit address derives
+ * from. With it a build checks the address a relayer hands out instead of believing it.
+ */
+export const MPC_PUBLIC_KEY = clean(env.VITE_MPC_PUBLIC_KEY);
+
 /** The name of one of Kinko's own contracts. */
 export type KinkoContract = keyof typeof CONTRACTS;
 

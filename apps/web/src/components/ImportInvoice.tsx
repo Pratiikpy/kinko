@@ -8,7 +8,7 @@ import { CONTRACTS } from "../lib/config.ts";
 import { formatAmount, toHex } from "../lib/format.ts";
 import { type ImportedInvoice, InvoiceFileError, parseInvoiceFile } from "../lib/import-invoice.ts";
 import { readerFor } from "../lib/midnight/providers.ts";
-import { invoiceView, publishInvoice, readPayLedger } from "../lib/pay.ts";
+import { invoiceOwnership, publishInvoice, readPayLedger } from "../lib/pay.ts";
 import { type InvoiceRecord, upsert } from "../lib/records.ts";
 import { useAccount } from "../state/account.tsx";
 import { ProofProgress } from "./ProofProgress.tsx";
@@ -68,7 +68,18 @@ export function ImportInvoice() {
       const ledger = await readPayLedger(await readerFor(account), CONTRACTS.pay);
       // Already published (from another device, or a retry after a lost
       // confirmation): keep it, without asking the chain for a duplicate.
-      if (invoiceView(ledger, inv.commitment)) {
+      const ownership = invoiceOwnership(
+        ledger,
+        inv.commitment,
+        inv.ownerSecret,
+        inv.terms.expiresAt,
+      );
+      if (ownership === "taken") {
+        throw new Error(
+          "An invoice with this commitment is already on chain, but it is not controlled by this file's owner secret or carries a different expiry. Someone else published it first, so you could not cancel or refund it. Make a new invoice and publish it before sharing its link.",
+        );
+      }
+      if (ownership === "own") {
         await update((doc) => upsert(doc, "invoices", recordOf(inv)));
         setDone({ commitment: inv.commitment, published: false });
         return;

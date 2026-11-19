@@ -38,6 +38,7 @@ for (const [from, to, fallback] of [
   ["MIDNIGHT_VAULT_CONTRACT_ADDRESS", "VITE_VAULT_CONTRACT_ADDRESS", undefined],
   ["ERC20_ADDRESS", "VITE_USDC_ADDRESS", undefined],
   ["EVM_VAULT_ADDRESS", "VITE_EVM_VAULT_ADDRESS", undefined],
+  ["MPC_SECP256K1_PUBKEY", "VITE_MPC_PUBLIC_KEY", undefined],
   ["EVM_RPC_URL", "VITE_EVM_RPC_URL", undefined],
   ["EVM_CHAIN_ID", "VITE_EVM_CHAIN_ID", undefined],
   ["MIDNIGHT_NODE_INDEXER_URL", "VITE_INDEXER_URL", undefined],

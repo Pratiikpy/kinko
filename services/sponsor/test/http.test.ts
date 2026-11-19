@@ -61,7 +61,11 @@ async function requestSponsorship(
       "Content-Type": "application/json",
       ...(options.apiKey ? { Authorization: `Bearer ${options.apiKey}` } : {}),
     },
-    body: JSON.stringify({ protocol: SPONSOR_PROTOCOL_VERSION, tx, circuit: options.circuit }),
+    body: JSON.stringify({
+      protocol: SPONSOR_PROTOCOL_VERSION,
+      tx: `${tx}${String((sent += 1))}`,
+      circuit: options.circuit,
+    }),
   });
   const body = (await res.json()) as {
     error?: string;
@@ -114,11 +118,17 @@ afterEach(
     }),
 );
 
+/** Every client builds its own transaction, so two requests are never byte for byte alike. */
+let sent = 0;
 const post = (body: unknown, headers: Record<string, string> = {}): Promise<Response> =>
   fetch(`${endpoint}${SPONSOR_PATH}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body),
+    body: JSON.stringify(
+      typeof body === "object" && body !== null && "tx" in body && body.tx === "aabb"
+        ? { ...body, tx: `aabb${String((sent += 1))}` }
+        : body,
+    ),
   });
 
 describe("an open sponsor", () => {
@@ -148,17 +158,44 @@ describe("an open sponsor", () => {
     });
   });
 
-  it("reports what it has spent on /healthz", async () => {
+  it("reports that it is up on /healthz, and nothing of its budget", async () => {
     await post({ protocol: SPONSOR_PROTOCOL_VERSION, tx: "aabb" });
     const health = (await (await fetch(`${endpoint}/healthz`)).json()) as Record<string, unknown>;
-    expect(health).toMatchObject({
-      ok: true,
-      sponsor: "mn_addr_test1sponsor",
-      paid: 1,
-      spentSpeck: "100",
-      budgetSpeck: "10000",
-      budgetLeftSpeck: "9900",
+    expect(health).toMatchObject({ ok: true, sponsor: "mn_addr_test1sponsor", paid: 1 });
+    // How close a drainer is to emptying the budget is not for strangers; the ledger has it.
+    for (const field of ["spentSpeck", "reservedSpeck", "budgetSpeck", "budgetLeftSpeck"]) {
+      expect(health).not.toHaveProperty(field);
+    }
+  });
+
+  it("refuses the same transaction sent a second time, before it can cost any budget", async () => {
+    const body = { protocol: SPONSOR_PROTOCOL_VERSION, tx: "replayed-tx" };
+    const first = await fetch(`${endpoint}${SPONSOR_PATH}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
+    const again = await fetch(`${endpoint}${SPONSOR_PATH}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect(first.status).toBe(200);
+    expect(again.status).toBe(400);
+    expect(await again.json()).toMatchObject({ code: "DUPLICATE_TRANSACTION" });
+    expect(submitted).toBe(1);
+  });
+
+  it("answers a body that is not a JSON object with a plain refusal, not a crash", async () => {
+    for (const text of ["null", "7", "[]", '"x"']) {
+      const response = await fetch(`${endpoint}${SPONSOR_PATH}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: text,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ code: "BAD_REQUEST" });
+    }
   });
 
   it("rate limits by connection, which the body cannot change", async () => {

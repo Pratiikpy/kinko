@@ -28,11 +28,11 @@ export default function Docs() {
         <Prose>
           <h2 id="start">Open an account</h2>
           <p>
-            Press <strong>Connect</strong>. Choose a Midnight wallet (1AM, Lace) if you have one, or
-            choose MetaMask, Phantom, Coinbase Wallet or another Ethereum or Solana wallet. With the
-            second kind, NightKit asks your wallet for one signature and opens a Midnight account
-            from it, inside a vault served from a separate site that this page cannot read. Signing
-            in again with the same wallet opens the same account.
+            Press <strong>Connect</strong>. Choose a Midnight wallet (such as 1AM) if you have one,
+            or choose MetaMask, Phantom, Coinbase Wallet or another Ethereum or Solana wallet. With
+            the second kind, NightKit asks your wallet for one signature and opens a Midnight
+            account from it, inside a vault served from a separate site that this page cannot read.
+            Signing in again with the same wallet opens the same account.
           </p>
           <p>
             A new account syncs with the network the first time. Addresses work immediately;

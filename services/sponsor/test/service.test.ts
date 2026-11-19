@@ -121,9 +121,11 @@ function build(
   return { service, logs };
 }
 
+/** Every client builds its own transaction, so two requests are never byte for byte alike. */
+let built = 0;
 const request = (overrides: Partial<SponsorRequest> = {}): SponsorRequest => ({
   protocol: SPONSOR_PROTOCOL_VERSION,
-  tx: "aabbcc",
+  tx: `aabbcc${String((built += 1))}`,
   ...overrides,
 });
 

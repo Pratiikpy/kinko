@@ -158,9 +158,14 @@ class RateLimiter {
 
 function clientOf(request: IncomingMessage, trustProxy: boolean): string {
   if (trustProxy) {
+    // Our own proxy appends the address it saw to the right. Everything to its left is whatever
+    // the caller chose to send, so reading the leftmost entry lets one client pose as many.
     const forwarded = request.headers["x-forwarded-for"];
-    const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
-    if (first !== undefined && first !== "") return first;
+    const last = (Array.isArray(forwarded) ? forwarded.join(",") : forwarded)
+      ?.split(",")
+      .at(-1)
+      ?.trim();
+    if (last !== undefined && last !== "") return last;
   }
   return request.socket.remoteAddress ?? "unknown";
 }

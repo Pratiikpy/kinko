@@ -15,8 +15,8 @@ export default function Vision() {
           On a public chain, paying someone publishes it: a salary, a supplier's price, a customer
           list. The privacy tools people use to avoid that have their own problem, which is knowing
           the money is really there. Unbacked minting has broken stablecoins before. When FTX
-          failed, the customers who got their money back were the ones whose funds were held
-          separately, at FTX Japan.
+          failed, the customers among the first to get their money back were those whose funds were
+          held separately, at FTX Japan.
         </p>
         <p>
           Kinko puts both rules in code. Payments are private by default. The reserve is public by
@@ -45,12 +45,13 @@ export default function Vision() {
         <h2>What comes next</h2>
         <ul>
           <li>
-            <strong>Public networks.</strong> Midnight's stagenet with Ethereum Sepolia now, where
-            Sig Network's signers run; mainnet when Night Mode opens there.
+            <strong>Public networks.</strong> Midnight's preprod with Ethereum Sepolia now, where
+            Sig Network's test signers run; mainnet when Night Mode opens there.
           </li>
           <li>
-            <strong>Fees paid for you.</strong> A sponsor that covers Midnight fees for Kinko's own
-            circuits, so a new user needs no DUST.
+            <strong>Fees paid for you, everywhere.</strong> A sponsor already covers the Midnight
+            fees of a card paying an invoice, so that holder needs no wallet or DUST; the same for
+            every action a new account takes is still to come.
           </li>
           <li>
             <strong>Earning on idle balance.</strong> The vault can already lend USDC on Aave; Kinko

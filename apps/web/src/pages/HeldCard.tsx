@@ -138,7 +138,17 @@ export default function HeldCard() {
   if (!input) {
     return (
       <div className="mx-auto max-w-xl px-4 py-12">
-        <EmptyState title="This card link is incomplete">
+        <EmptyState
+          title="This card link is incomplete"
+          action={
+            <Link
+              to="/"
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-shu-ink hover:underline"
+            >
+              What is Kinko?
+            </Link>
+          }
+        >
           Everything after the # is the card. It is read in this browser and never sent to any
           server.
         </EmptyState>

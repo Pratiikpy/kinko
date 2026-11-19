@@ -165,9 +165,9 @@ export default function Landing() {
           </div>
           <div className="space-y-5 text-lg leading-relaxed text-ink-2">
             <p>
-              When FTX collapsed in November 2022, customers of FTX Japan were the ones who got
-              their money back. Japanese law required the exchange to keep customer funds apart from
-              its own, so the money was still there when it was needed.
+              When FTX collapsed in November 2022, customers of FTX Japan were among the first to
+              get their money back. Japanese law required the exchange to keep customer funds apart
+              from its own, so the money was still there when it was needed.
             </p>
             <p>
               Kinko turns that rule into code. Every private dollar on Midnight is a real USDC

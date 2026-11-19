@@ -17,6 +17,7 @@ describe("parseAmount", () => {
     expect(parseAmount("12.5")).toEqual({ ok: true, value: 12_500_000n });
     expect(parseAmount(".5")).toEqual({ ok: true, value: 500_000n });
     expect(parseAmount("1,250.00")).toEqual({ ok: true, value: 1_250_000_000n });
+    expect(parseAmount("12,345,678")).toEqual({ ok: true, value: 12_345_678_000_000n });
     expect(parseAmount("  0.000001 ")).toEqual({ ok: true, value: 1n });
   });
 
@@ -98,5 +99,13 @@ describe("time helpers", () => {
     expect(formatDuration(120)).toBe("2 min");
     expect(formatDuration(190)).toBe("3 min 10 s");
     expect(formatDuration(-5)).toBe("0 s");
+  });
+});
+
+describe("parseAmount commas", () => {
+  it("refuses a decimal comma, which would multiply the amount by a hundred", () => {
+    for (const text of ["12,50", "0,99", "1,25", "1,2500", ",5", "1,,000", "1,000,", "12,34,567"]) {
+      expect(parseAmount(text)).toEqual({ ok: false, error: "format" });
+    }
   });
 });

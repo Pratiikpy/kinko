@@ -17,7 +17,8 @@ export type ParsedAmount = { ok: true; value: bigint } | { ok: false; error: Amo
 /** Plain-language text for each refusal, for form hints. */
 export const AMOUNT_ERROR_TEXT: Record<AmountError, string> = {
   empty: "Enter an amount.",
-  format: "Use digits and at most one decimal point, like 25 or 12.50.",
+  format:
+    "Use digits and a decimal point, like 25 or 12.50. Commas only group thousands, as in 1,250.00.",
   precision: `Dollars have at most ${String(USDC_DECIMALS)} decimal places.`,
   zero: "The amount must be more than zero.",
   range: "That amount is larger than the contracts can carry.",
@@ -34,8 +35,14 @@ export const AMOUNT_ERROR_TEXT: Record<AmountError, string> = {
  * @returns The base units, or why the text was refused.
  */
 export function parseAmount(text: string, decimals: number = USDC_DECIMALS): ParsedAmount {
-  const raw = text.trim().replace(/,/g, "");
-  if (raw === "") return { ok: false, error: "empty" };
+  const typed = text.trim();
+  if (typed === "") return { ok: false, error: "empty" };
+  // A comma is only a thousands separator when it groups three digits ("1,250.00"). Anywhere else
+  // it is a decimal comma ("12,50"), which would be read as a hundred times the amount typed.
+  if (typed.includes(",") && !/^\d{1,3}(,\d{3})+(\.\d*)?$/.test(typed)) {
+    return { ok: false, error: "format" };
+  }
+  const raw = typed.replace(/,/g, "");
   if (!/^\d*\.?\d*$/.test(raw) || raw === ".") return { ok: false, error: "format" };
   const [whole = "", fraction = ""] = raw.split(".");
   if (fraction.length > decimals) return { ok: false, error: "precision" };

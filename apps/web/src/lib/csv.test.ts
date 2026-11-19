@@ -70,3 +70,18 @@ describe("parseBatch", () => {
     expect(b.total).toBe(BigInt(MAX_BATCH_ROWS) * 1_000_000n);
   });
 });
+
+describe("parseBatch commas in amounts", () => {
+  it("names a line whose unquoted thousands comma split the amount, instead of paying $1", () => {
+    const parsed = parseBatch("@alice,1,250.00,rent\n@bob_designs,480,fine\n");
+    expect(parsed.rows.map((r) => r.recipient)).toEqual(["@bob_designs"]);
+    expect(parsed.issues).toHaveLength(1);
+    expect(parsed.issues[0]).toMatchObject({ line: 1 });
+    expect(parsed.issues[0]?.message).toMatch(/comma inside the amount/);
+  });
+
+  it("reads a quoted thousands comma, and a plain amount with a numeric memo", () => {
+    expect(parseBatch('@alice,"1,250.00",rent').rows[0]?.amount).toBe(1_250_000_000n);
+    expect(parseBatch("@alice,5,12").rows[0]).toMatchObject({ amount: 5_000_000n, memo: "12" });
+  });
+});

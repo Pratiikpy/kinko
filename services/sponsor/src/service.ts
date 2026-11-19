@@ -38,6 +38,8 @@
 // node credential (the wallet is injected as a `SponsorSigner`), and the only API key material
 // in the process lives in the server's key map, which is read but never printed.
 // ---------------------------------------------------------------------------------------------
+import { createHash } from "node:crypto";
+
 import {
   describeTransaction,
   deserializeBound,
@@ -145,6 +147,10 @@ export interface CallerIdentity {
   label?: string;
 }
 
+/** How long a taken transaction is remembered, and how many at most. */
+const TAKEN_FOR_MS = 60 * 60 * 1000;
+const TAKEN_MAX = 20_000;
+
 /**
  *
  */
@@ -174,6 +180,12 @@ export class SponsorService {
   private reservedSpeck = 0n;
   private paidCount = 0;
   private refusedCount = 0;
+  /**
+   * Digests of transactions already taken up, with when. A bound transaction can be sent again by
+   * anyone who has seen it; the node refuses the copies, but each one would still have counted a
+   * fee against the budget. A repeat is refused before anything is reserved.
+   */
+  private readonly taken = new Map<string, number>();
 
   /** @param options - The policy, the wallet, and where decisions are logged. */
   constructor(options: SponsorServiceOptions) {
@@ -326,9 +338,25 @@ export class SponsorService {
       });
     }
 
+    const digest = createHash("sha256").update(request.tx).digest("hex");
+    this.forgetOldTransactions();
+    if (this.taken.has(digest)) {
+      this.refusedCount += 1;
+      const reason =
+        "this exact transaction was already sent to the sponsor. Build and bind a new one.";
+      log("refused", {
+        code: "DUPLICATE_TRANSACTION",
+        reason,
+        circuits: decision.circuits,
+        contractAddress: decision.contractAddress,
+      });
+      throw new SponsorError(reason, "DUPLICATE_TRANSACTION");
+    }
+
     // Reserve, synchronously, the most this request could cost. Everything from here to the
     // `finally` below runs with that amount held against the budget, so two requests arriving
     // together cannot both be told there is room for one.
+    this.taken.set(digest, this.now());
     const reservation = this.policy.maxFeeSpeck;
     if (this.spentSpeck + this.reservedSpeck + reservation > this.policy.budgetSpeck) {
       this.limiter.refund(caller.id);
@@ -461,6 +489,15 @@ export class SponsorService {
     } finally {
       // Covers every path that refused before committing anything.
       release();
+    }
+  }
+
+  /** Drops digests older than an hour, and the oldest beyond a bound, so the memory stays small. */
+  private forgetOldTransactions(): void {
+    const cutoff = this.now() - TAKEN_FOR_MS;
+    for (const [digest, at] of this.taken) {
+      if (at >= cutoff && this.taken.size <= TAKEN_MAX) break;
+      this.taken.delete(digest);
     }
   }
 

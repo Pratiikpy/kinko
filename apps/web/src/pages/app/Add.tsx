@@ -58,9 +58,10 @@ function NewDeposit({
     setBusy(true);
     setError(null);
     try {
-      const { identityCommitment } = await import("../../lib/vault.ts");
+      const { assertDepositAddress, identityCommitment } = await import("../../lib/vault.ts");
       const commitment = identityCommitment(await secret("vault"));
       const depositAddress = await relayer.depositAddress(commitment);
+      await assertDepositAddress(depositAddress, commitment);
       const id = localId();
       const now = Date.now();
       await update((doc) =>
@@ -267,8 +268,10 @@ function Funding({ record, deployment }: { record: VaultRequestRecord; deploymen
           </div>
         ) : null}
         <p className="mt-3 text-sm text-ink-3">
-          Any wallet works: you can also send to this address from an exchange or another app. This
-          page checks the address every few seconds.
+          {deployment.evmChainId === 1
+            ? "Any wallet works: you can also send to this address from an exchange or another app. "
+            : "This build runs on Ethereum Sepolia, a test network. Send only Sepolia test USDC to this address, from a wallet connected to Sepolia. An exchange, or any other network, will not reach it and the USDC would be lost. Free test USDC and ETH come from faucets. "}
+          This page checks the address every few seconds.
         </p>
         <StartDeposit record={record} deployment={deployment} ready={usdcOk && ethOk} />
       </div>

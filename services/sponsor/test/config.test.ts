@@ -81,4 +81,22 @@ describe("readConfig", () => {
     });
     expect(c.policy.rateLimit.maxRequests).toBe(2);
   });
+
+  it("refuses to start on a limit that is not a whole number, instead of switching the limit off", () => {
+    for (const [name, value] of [
+      ["SPONSOR_RATE_MAX", "5/min"],
+      ["SPONSOR_MAX_ACTIONS", "one"],
+      ["SPONSOR_RATE_WINDOW_MS", "-1"],
+      ["SPONSOR_RATE_MAX", "0"],
+      ["SPONSOR_PORT", "80.5"],
+    ] as const) {
+      expect(() =>
+        readConfig(
+          { SPONSOR_BUDGET_SPECK: "9", SPONSOR_CONTRACTS: "aa", [name]: value },
+          repo(),
+          "undeployed",
+        ),
+      ).toThrow(new RegExp(`${name} must be a whole number`));
+    }
+  });
 });

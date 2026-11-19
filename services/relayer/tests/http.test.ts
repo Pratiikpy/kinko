@@ -446,16 +446,18 @@ describe("rate limit", () => {
     expect((await fetch(`${base}/health`)).status).toBe(200);
   });
 
-  it("counts clients apart only by the forwarded address a trusted proxy supplies", async () => {
+  it("counts clients by the address our own proxy appended, the rightmost, never by what the caller sent", async () => {
     const { base } = await serve({ config: { rateLimitPerMinute: 1, trustProxy: true } });
+    const ask = async (forwarded: string): Promise<number> =>
+      (await fetch(`${base}/health`, { headers: { "x-forwarded-for": forwarded } })).status;
 
-    const first = await fetch(`${base}/health`, {
-      headers: { "x-forwarded-for": "203.0.113.5, 10.0.0.1" },
-    });
-    const other = await fetch(`${base}/health`, { headers: { "x-forwarded-for": "203.0.113.6" } });
-    const repeat = await fetch(`${base}/health`, { headers: { "x-forwarded-for": "203.0.113.5" } });
+    // One real client behind the proxy, claiming a different address each time on the left.
+    const first = await ask("1.1.1.1, 203.0.113.5");
+    const spoofed = await ask("2.2.2.2, 203.0.113.5");
+    // Another real client is not held back by it.
+    const other = await ask("203.0.113.6");
 
-    expect([first.status, other.status, repeat.status]).toEqual([200, 200, 429]);
+    expect([first, spoofed, other]).toEqual([200, 429, 200]);
   });
 
   it("ignores a forwarded address when no proxy is trusted, so a client cannot dodge its limit", async () => {

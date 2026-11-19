@@ -81,7 +81,7 @@ test("starting a deposit fetches the deposit address and keeps it across a reloa
   await goInApp(page, "/app/add");
   await page.getByLabel("Amount in USDC").fill("12x");
   await page.getByRole("button", { name: "Get my deposit address" }).click();
-  await expect(page.getByText(/Use digits and at most one decimal point/)).toBeVisible();
+  await expect(page.getByText(/Use digits and a decimal point/)).toBeVisible();
   await page.getByLabel("Amount in USDC").fill("100");
   await page.getByRole("button", { name: "Get my deposit address" }).click();
   await expect(

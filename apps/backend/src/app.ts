@@ -200,7 +200,7 @@ export const createApp = (config: Config, overrides: AppOverrides = {}): App => 
         host: config.host,
         port,
         contract: config.chain.contractAddress,
-        indexer: config.chain.indexerUri,
+        indexer: hostOf(config.chain.indexerUri),
         appUrl: config.appUrl,
       });
       if (options.background ?? true) void checkOracleKey();
@@ -219,3 +219,17 @@ export const createApp = (config: Config, overrides: AppOverrides = {}): App => 
     },
   };
 };
+
+/**
+ * An endpoint with its path and query dropped: a hosted indexer's URL carries its project key.
+ *
+ * @param url - The endpoint.
+ * @returns Its origin, or a placeholder when it is not a URL.
+ */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "(unreadable url)";
+  }
+}

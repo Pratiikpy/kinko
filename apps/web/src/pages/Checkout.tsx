@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 
 import { InvoicePayment } from "../components/InvoicePayment.tsx";
 import { Seal } from "../components/Logo.tsx";
@@ -119,7 +119,17 @@ export default function Checkout() {
           <InvoicePayment link={link} live onPaid={onPaid} />
         </Card>
       ) : (
-        <EmptyState title="This checkout link is incomplete">
+        <EmptyState
+          title="This checkout link is incomplete"
+          action={
+            <Link
+              to="/"
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-shu-ink hover:underline"
+            >
+              What is Kinko?
+            </Link>
+          }
+        >
           Ask the merchant for the full link. Everything after the # is needed, and it is never sent
           to any server.
         </EmptyState>

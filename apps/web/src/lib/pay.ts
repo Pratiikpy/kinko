@@ -246,6 +246,32 @@ export function invoiceView(ledger: KinkoPay.Ledger, commitmentHex: string): Inv
 }
 
 /**
+ * Whether an invoice on the ledger belongs to whoever holds an owner secret, and carries the expiry
+ * its terms name. An invoice's link can be passed around before the merchant publishes it, and
+ * whoever creates it first owns it, so a published invoice is only the merchant's own if its owner
+ * tag is the one their secret hashes to.
+ *
+ * @param ledger - kinko_pay's ledger.
+ * @param commitmentHex - The invoice's commitment.
+ * @param ownerSecret - The owner secret the merchant holds for it.
+ * @param expiresAt - The expiry the merchant's terms name, in seconds.
+ * @returns "absent" when nothing is published, "own" when it is the merchant's, else "taken".
+ */
+export function invoiceOwnership(
+  ledger: KinkoPay.Ledger,
+  commitmentHex: string,
+  ownerSecret: Uint8Array,
+  expiresAt: bigint,
+): "absent" | "own" | "taken" {
+  const key = fromHex(commitmentHex);
+  if (!ledger.invoices.member(key)) return "absent";
+  const state = ledger.invoices.lookup(key);
+  const tag = KinkoPay.pureCircuits.owner_tag(ownerSecret);
+  const sameOwner = toHex(state.owner) === toHex(tag);
+  return sameOwner && state.expires_at === expiresAt ? "own" : "taken";
+}
+
+/**
  * Whether a receipt is on the ledger.
  *
  * @param ledger - kinko_pay's ledger.

@@ -237,7 +237,21 @@ export default function InvoiceDetail() {
                   <ProofProgress stage={call.stage} startedAt={call.startedAt} error={call.error} />
                 </div>
               </Card>
-              {(invoice.contributions ?? 0) > 0 ? <Refund commitment={invoice.commitment} /> : null}
+              {(invoice.contributions ?? 0) > 0 ? (
+                invoice.token === "NATIVE" ? (
+                  <Card>
+                    <SectionTitle>Refund a payment</SectionTitle>
+                    <p className="text-sm text-ink-2">
+                      This invoice is priced in NIGHT and was paid in KUSD at the oracle's rate. A
+                      refund is made in the invoice's own asset and amount, and a payer's KUSD
+                      cannot be returned that way, so Kinko does not offer one here. Settle it with
+                      the payer by paying them back directly.
+                    </p>
+                  </Card>
+                ) : (
+                  <Refund commitment={invoice.commitment} />
+                )
+              ) : null}
             </div>
             <aside className="space-y-4">
               <Card>

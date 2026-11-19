@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { ConnectButton } from "nightkit-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { NETWORK_ID } from "../lib/config.ts";
@@ -100,23 +101,57 @@ export function ThemeToggle() {
   );
 }
 
+const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * The menu a narrow screen opens. It is rendered into the page body, not into the header: the
+ * header's backdrop blur makes it the containing block of anything fixed inside it, which shrank
+ * the menu to the header's own 64 pixels. Focus is kept inside it while it is open.
+ *
+ * @param props - What closes it.
+ * @param props.onClose - Called on Escape, on the backdrop and on the close button.
+ * @returns The menu.
+ */
 function MobileMenu({ onClose }: { onClose: () => void }) {
+  const root = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    const keys = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(root.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !root.current?.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !root.current?.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
     };
-    document.addEventListener("keydown", esc);
+    document.addEventListener("keydown", keys);
     ref.current?.querySelector<HTMLElement>("a,button")?.focus();
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", esc);
+      document.removeEventListener("keydown", keys);
       document.body.style.overflow = overflow;
     };
   }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+  return createPortal(
+    <div
+      ref={root}
+      className="fixed inset-0 z-50 lg:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Menu"
+    >
       <button
         type="button"
         aria-label="Close menu"
@@ -180,12 +215,14 @@ function MobileMenu({ onClose }: { onClose: () => void }) {
           </nav>
         ))}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
 export function SiteHeader() {
   const [menu, setMenu] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
   const { pathname } = useLocation();
   useEffect(() => {
     setMenu(false);
@@ -228,6 +265,7 @@ export function SiteHeader() {
             <ConnectButton label="Connect" />
           </div>
           <button
+            ref={opener}
             type="button"
             onClick={() => {
               setMenu(true);
@@ -244,6 +282,7 @@ export function SiteHeader() {
         <MobileMenu
           onClose={() => {
             setMenu(false);
+            opener.current?.focus();
           }}
         />
       ) : null}
@@ -329,31 +368,31 @@ export function Footer() {
         </div>
         <nav aria-label="Product" className="grid content-start gap-1">
           <p className="mb-1 font-semibold text-ink">Product</p>
-          <Link className="py-1 text-ink-2 hover:text-ink" to="/app">
+          <Link className="flex min-h-11 items-center text-ink-2 hover:text-ink" to="/app">
             Account
           </Link>
-          <Link className="py-1 text-ink-2 hover:text-ink" to="/backing">
+          <Link className="flex min-h-11 items-center text-ink-2 hover:text-ink" to="/backing">
             Backing
           </Link>
-          <Link className="py-1 text-ink-2 hover:text-ink" to="/examine">
+          <Link className="flex min-h-11 items-center text-ink-2 hover:text-ink" to="/examine">
             Examine
           </Link>
-          <Link className="py-1 text-ink-2 hover:text-ink" to="/walkthrough">
+          <Link className="flex min-h-11 items-center text-ink-2 hover:text-ink" to="/walkthrough">
             Guided tour
           </Link>
         </nav>
         <nav aria-label="Learn" className="grid content-start gap-1">
           <p className="mb-1 font-semibold text-ink">Learn</p>
-          <Link className="py-1 text-ink-2 hover:text-ink" to="/docs">
+          <Link className="flex min-h-11 items-center text-ink-2 hover:text-ink" to="/docs">
             Docs
           </Link>
-          <Link className="py-1 text-ink-2 hover:text-ink" to="/developer">
+          <Link className="flex min-h-11 items-center text-ink-2 hover:text-ink" to="/developer">
             Developers
           </Link>
-          <Link className="py-1 text-ink-2 hover:text-ink" to="/vision">
+          <Link className="flex min-h-11 items-center text-ink-2 hover:text-ink" to="/vision">
             Vision
           </Link>
-          <Link className="py-1 text-ink-2 hover:text-ink" to="/privacy">
+          <Link className="flex min-h-11 items-center text-ink-2 hover:text-ink" to="/privacy">
             Privacy and limits
           </Link>
         </nav>

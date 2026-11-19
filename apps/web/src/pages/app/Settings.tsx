@@ -130,6 +130,16 @@ function Backup() {
   );
 }
 
+/**
+ * An endpoint as it may be shown: a hosted indexer's URL ends in its project key, which is not for
+ * the screen, a screenshot or a copy button.
+ *
+ * @param url - The endpoint.
+ * @returns The URL with any key-like query value replaced.
+ */
+const hideKey = (url: string | undefined): string | undefined =>
+  url?.replace(/([?&](?:project_id|apikey|api_key|key|token)=)[^&#]*/gi, "$1…");
+
 function Row({ label, value }: { label: string; value: string | undefined }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 py-2.5">
@@ -214,7 +224,7 @@ export default function Settings() {
               <dd className="font-mono text-xs text-ink">{d?.evmChainId ?? EVM_CHAIN_ID}</dd>
             </div>
             <Row label="Relayer" value={RELAYER_URL} />
-            <Row label="Public indexer" value={PUBLIC_INDEXER?.http} />
+            <Row label="Public indexer" value={hideKey(PUBLIC_INDEXER?.http)} />
             <Row label="Ethereum RPC" value={EVM_RPC_URL} />
             <Row label="NightKit vault" value={NIGHTKIT_VAULT_URL} />
             <Row label="Proving keys" value={ZK_BASE_URL} />

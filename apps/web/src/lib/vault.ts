@@ -37,6 +37,7 @@ import {
   vaultTokenSupply,
 } from "@sig-net/midnight-examples-erc20-vault-contract";
 
+import { MPC_PUBLIC_KEY, PINNED_VAULT } from "./config.ts";
 import { fromHex, toHex } from "./format.ts";
 import { callCircuit, callCircuitScoped, type CallStage } from "./midnight/contracts.ts";
 import type { Account } from "./midnight/providers.ts";
@@ -89,6 +90,29 @@ export const kusdTokenType = (usdcAddress: string, vaultContractAddress: string)
     vaultCircuits.vaultTokenDomainSeparator(evmAddressBytes(usdcAddress)),
     vaultContractAddress,
   );
+
+/**
+ * Refuse a deposit address the relayer made up. The address is derived from the MPC's published
+ * key, the vault contract and the user's identity commitment, so a build that pins the first two
+ * can work it out itself; money sent to any other address is not the vault's to sweep.
+ *
+ * @param depositAddress - The address the relayer returned.
+ * @param commitment - The user's identity commitment, as the relayer was asked about it.
+ * @throws {Error} When this build can derive the address and it differs.
+ */
+export async function assertDepositAddress(
+  depositAddress: string,
+  commitment: string,
+): Promise<void> {
+  if (!MPC_PUBLIC_KEY || !PINNED_VAULT) return;
+  const { deriveEvmAddress } = await import("@sig-net/midnight");
+  const expected = deriveEvmAddress(MPC_PUBLIC_KEY, PINNED_VAULT.vaultContractAddress, commitment);
+  if (expected.toLowerCase() !== depositAddress.toLowerCase()) {
+    throw new Error(
+      "The relayer gave a deposit address this app cannot reproduce, so nothing was started. Do not send USDC to it.",
+    );
+  }
+}
 
 /**
  * Read the vault's public ledger.

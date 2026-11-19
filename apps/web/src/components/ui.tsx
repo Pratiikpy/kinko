@@ -11,6 +11,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
   useId,
+  useRef,
   useState,
 } from "react";
 import { Link, type LinkProps } from "react-router-dom";
@@ -416,24 +417,52 @@ export function Segmented<T extends string>({
   options: readonly { value: T; label: string; hint?: string }[];
 }) {
   const selected = options.find((o) => o.value === value);
+  const labelId = useId();
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const at = Math.max(
+    0,
+    options.findIndex((o) => o.value === value),
+  );
+  // Arrow keys move the choice and the focus together, as a radio group does; only the chosen
+  // option is in the tab order.
+  const move = (from: number, step: number) => {
+    const next = (from + step + options.length) % options.length;
+    const option = options[next];
+    if (!option) return;
+    onChange(option.value);
+    refs.current[next]?.focus();
+  };
   return (
     <div>
-      <p className="mb-1.5 text-sm font-medium text-ink" id={`${label}-label`}>
+      <p className="mb-1.5 text-sm font-medium text-ink" id={labelId}>
         {label}
       </p>
       <div
         role="radiogroup"
-        aria-labelledby={`${label}-label`}
+        aria-labelledby={labelId}
         className="flex flex-wrap gap-1 rounded-xl border border-line-strong bg-surface-2 p-1"
       >
-        {options.map((o) => (
+        {options.map((o, index) => (
           <button
             key={o.value}
+            ref={(el) => {
+              refs.current[index] = el;
+            }}
             type="button"
             role="radio"
             aria-checked={o.value === value}
+            tabIndex={index === at ? 0 : -1}
             onClick={() => {
               onChange(o.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                e.preventDefault();
+                move(index, 1);
+              } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+                e.preventDefault();
+                move(index, -1);
+              }
             }}
             className={cx(
               // Long option sets wrap to a second row rather than breaking words.

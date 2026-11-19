@@ -300,7 +300,7 @@ export function loadConfig(env: Environment): RelayerConfig {
 
   const engine: EngineConfig = {
     pollIntervalMs: reader.integer("RELAYER_POLL_INTERVAL_MS", 3_000, 100, HOUR_MS),
-    stageTimeoutMs: reader.integer("RELAYER_STAGE_TIMEOUT_MS", 25 * MINUTE_MS, 1_000, 7 * DAY_MS),
+    stageTimeoutMs: reader.integer("RELAYER_STAGE_TIMEOUT_MS", 60 * MINUTE_MS, 1_000, 7 * DAY_MS),
     maxConsecutiveFailures: reader.integer("RELAYER_MAX_CONSECUTIVE_FAILURES", 8, 1, 1000),
     rebroadcastIntervalMs: reader.integer(
       "RELAYER_REBROADCAST_INTERVAL_MS",

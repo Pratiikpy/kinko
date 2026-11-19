@@ -14,7 +14,7 @@ import {
 import { useAsync } from "../hooks/useAsync.ts";
 import { EVM_RPC_URL, MIDNIGHT_EXPLORER_URL, PUBLIC_INDEXER } from "../lib/config.ts";
 import { evmTokenHolderUrl, latestBlock, usdcBalance } from "../lib/evm.ts";
-import { formatAmount, relativeTime } from "../lib/format.ts";
+import { formatAmount, relativeTime, toHex } from "../lib/format.ts";
 import { publicDataProvider } from "../lib/midnight/providers.ts";
 import { relayer } from "../lib/relayer.ts";
 import { useDeployment } from "../state/deployment.tsx";
@@ -80,19 +80,6 @@ export default function Backing() {
     { intervalMs: 30_000 },
   );
 
-  const ethereum = useAsync(
-    async () => {
-      if (!deployment) throw new Error("Vault address unknown.");
-      const [balance, block] = await Promise.all([
-        usdcBalance(deployment.usdcAddress, deployment.evmVaultAddress),
-        latestBlock(),
-      ]);
-      return { balance, block };
-    },
-    [deployment?.usdcAddress, deployment?.evmVaultAddress],
-    { intervalMs: 30_000, enabled: Boolean(deployment && EVM_RPC_URL) },
-  );
-
   const midnight = useAsync(
     async () => {
       if (!deployment) throw new Error("Vault address unknown.");
@@ -100,10 +87,35 @@ export default function Backing() {
       if (!pdp) throw new Error("No public indexer configured.");
       const { readVault, kusdSupply } = await import("../lib/vault.ts");
       const ledger = await readVault(pdp, deployment.vaultContractAddress);
-      return kusdSupply(ledger, deployment.usdcAddress);
+      // The vault's own Ethereum account is named by the Midnight ledger, which is what the
+      // vault's circuits release USDC from. It is the account whose balance backs the KUSD,
+      // whatever address a relayer or a build file says.
+      return {
+        supply: kusdSupply(ledger, deployment.usdcAddress),
+        evmVault: `0x${toHex(ledger.vaultEvmAddress)}`,
+      };
     },
     [deployment?.vaultContractAddress, deployment?.usdcAddress],
     { intervalMs: 30_000, enabled: Boolean(deployment && PUBLIC_INDEXER) },
+  );
+  const ledgerEvmVault = midnight.status === "ready" ? midnight.value.evmVault : undefined;
+  // A named account that is not the ledger's would make the balance below say nothing about the KUSD.
+  const vaultAccountDisagrees =
+    deployment !== null &&
+    ledgerEvmVault !== undefined &&
+    deployment.evmVaultAddress.toLowerCase() !== ledgerEvmVault.toLowerCase();
+
+  const ethereum = useAsync(
+    async () => {
+      if (!deployment || !ledgerEvmVault) throw new Error("Vault address unknown.");
+      const [balance, block] = await Promise.all([
+        usdcBalance(deployment.usdcAddress, ledgerEvmVault),
+        latestBlock(),
+      ]);
+      return { balance, block };
+    },
+    [deployment?.usdcAddress, ledgerEvmVault],
+    { intervalMs: 30_000, enabled: Boolean(deployment && EVM_RPC_URL && ledgerEvmVault) },
   );
 
   const refresh = () => {
@@ -116,15 +128,21 @@ export default function Backing() {
     ? { status: "skipped", reason: "No Ethereum RPC in this build" }
     : !deployment
       ? { status: "skipped", reason: "Vault unknown" }
-      : toRead(ethereum, (v) => v.balance);
-  const mnSupply = midnight.status === "ready" ? midnight.value : null;
+      : vaultAccountDisagrees
+        ? {
+            status: "error",
+            message:
+              "The vault account this app was given is not the one the Midnight vault holds USDC in",
+          }
+        : toRead(ethereum, (v) => v.balance);
+  const mnSupply = midnight.status === "ready" ? midnight.value.supply : null;
   const mnRead: Read<bigint> = !PUBLIC_INDEXER
     ? { status: "skipped", reason: "No public indexer in this build" }
     : !deployment
       ? { status: "skipped", reason: "Vault unknown" }
-      : midnight.status === "ready" && midnight.value === null
+      : midnight.status === "ready" && midnight.value.supply === null
         ? { status: "skipped", reason: "The vault does not hold this token" }
-        : toRead(midnight, (v) => (v ? v.minted - v.burned : 0n));
+        : toRead(midnight, (v) => (v.supply ? v.supply.minted - v.supply.burned : 0n));
   const rep = reported.status === "ready" ? reported.value : null;
   const repVault = toRead(reported, (v) => v.usdcInVault);
   const repCirc = toRead(reported, (v) => v.kusdMinted - v.kusdBurned);
@@ -162,6 +180,9 @@ export default function Backing() {
         Kinko's dollars are private, but their backing is not. This page reads the USDC held by the
         vault on Ethereum and the KUSD in circulation on Midnight, from your browser, and compares
         them.
+        {deployment && deployment.evmChainId !== 1
+          ? " On this build the USDC is Sepolia test USDC."
+          : ""}
       </PageHeader>
 
       {state.status === "unavailable" ? (
@@ -173,7 +194,7 @@ export default function Backing() {
       ) : null}
 
       <Card className="mb-6">
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
           {verdict === "backed" ? (
             <CheckCircle2 aria-hidden className="h-10 w-10 text-ok" />
           ) : verdict === "short" ? (
@@ -181,7 +202,7 @@ export default function Backing() {
           ) : (
             <CircleHelp aria-hidden className="h-10 w-10 text-ink-3" />
           )}
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 sm:flex-1">
             <p className="font-display text-2xl text-ink">
               {verdict === "backed"
                 ? independent
@@ -244,13 +265,18 @@ export default function Backing() {
           </div>
           {deployment ? (
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Copyable value={deployment.evmVaultAddress} label="Vault" />
+              <Copyable value={ledgerEvmVault ?? deployment.evmVaultAddress} label="Vault" />
               <Copyable value={deployment.usdcAddress} label="USDC" />
-              {evmTokenHolderUrl(deployment.usdcAddress, deployment.evmVaultAddress) ? (
+              {evmTokenHolderUrl(
+                deployment.usdcAddress,
+                ledgerEvmVault ?? deployment.evmVaultAddress,
+              ) ? (
                 <ExternalA
                   href={
-                    evmTokenHolderUrl(deployment.usdcAddress, deployment.evmVaultAddress) ??
-                    undefined
+                    evmTokenHolderUrl(
+                      deployment.usdcAddress,
+                      ledgerEvmVault ?? deployment.evmVaultAddress,
+                    ) ?? undefined
                   }
                 >
                   Open in the explorer
@@ -280,7 +306,7 @@ export default function Backing() {
                   read={{ status: "ready", value: mnSupply.burned }}
                 />
                 <SourceRow
-                  label="Of which withdrawal fees"
+                  label="Of which fees"
                   read={{ status: "ready", value: mnSupply.feesMinted }}
                 />
               </>
@@ -337,8 +363,9 @@ export default function Backing() {
             </li>
             <li>USDC is itself issued by Circle. Kinko's backing is exactly as good as USDC.</li>
             <li>
-              Withdrawal fees stay in the vault as USDC, so the vault can hold slightly more than
-              circulates. It should never hold less.
+              Fees are minted as KUSD and stay in circulation, so they do not make the vault hold
+              more. The vault can still hold more than circulates: USDC from a deposit that has not
+              been completed yet, or sent to it directly. It should never hold less.
             </li>
           </ul>
         </Card>
@@ -347,11 +374,13 @@ export default function Backing() {
       <Card className="mt-6">
         <SectionTitle>Check it without this page</SectionTitle>
         <p className="text-sm text-ink-2">
-          The same figures, from a terminal. Neither command needs an account.
+          The Ethereum figure, from a terminal, with no account. The Midnight figure is the vault
+          contract's public supply counters, which any Midnight indexer serves; the second command
+          is the relayer's own report, so it answers only where this app is served.
         </p>
         <pre className="mt-3 overflow-x-auto rounded-xl bg-surface-2 p-4 font-mono text-xs leading-relaxed text-ink">
           {`# USDC held by the vault on Ethereum
-cast call ${deployment?.usdcAddress ?? "<usdc>"} "balanceOf(address)(uint256)" ${deployment?.evmVaultAddress ?? "<vault>"} --rpc-url ${EVM_RPC_URL ?? "<rpc>"}
+cast call ${deployment?.usdcAddress ?? "<usdc>"} "balanceOf(address)(uint256)" ${ledgerEvmVault ?? deployment?.evmVaultAddress ?? "<vault>"} --rpc-url ${EVM_RPC_URL ?? "<rpc>"}
 
 # The relayer's report of both chains
 curl ${relayer?.baseUrl ?? "<relayer>"}/backing`}

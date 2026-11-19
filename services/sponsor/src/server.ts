@@ -211,10 +211,6 @@ export function createSponsorServer(options: ServerOptions): Server {
           sponsor: service.sponsorAddress,
           paid: stats.paid,
           refused: stats.refused,
-          spentSpeck: stats.spentSpeck.toString(),
-          reservedSpeck: stats.reservedSpeck.toString(),
-          budgetSpeck: stats.budgetSpeck.toString(),
-          budgetLeftSpeck: stats.budgetLeftSpeck.toString(),
         },
         cors,
       );
@@ -276,7 +272,11 @@ export function createSponsorServer(options: ServerOptions): Server {
     let body: SponsorRequest;
     try {
       const text = await readBody(request);
-      body = JSON.parse(text) as SponsorRequest;
+      const parsed: unknown = JSON.parse(text);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new SponsorError("the request body must be a JSON object.", "BAD_REQUEST");
+      }
+      body = parsed as SponsorRequest;
     } catch (error) {
       const sponsorError = error instanceof SponsorError ? error : undefined;
       json(

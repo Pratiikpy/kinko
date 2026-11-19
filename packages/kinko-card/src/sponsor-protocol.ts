@@ -49,6 +49,7 @@ export type SponsorRefusalCode =
   | "RATE_LIMITED"
   | "UNAUTHORIZED"
   | "SPONSOR_OUT_OF_DUST"
+  | "DUPLICATE_TRANSACTION"
   | "SUBMIT_FAILED";
 
 /** What the sponsor answers when it refused. */

@@ -69,6 +69,33 @@ export function deployedPayContract(root: string, networkId: string): string | u
 }
 
 /**
+ * A limit from the environment: a whole number or the default, never NaN. A bare `Number()` turned
+ * `SPONSOR_RATE_MAX=5/min` into NaN, and every comparison against NaN is false, so the limit
+ * switched itself off.
+ *
+ * @param env - The environment.
+ * @param name - The variable.
+ * @param fallback - The value when it is unset.
+ * @param min - The smallest value allowed.
+ * @returns The number.
+ * @throws {Error} When the variable is set to anything but a whole number of at least `min`.
+ */
+function wholeNumber(
+  env: Record<string, string | undefined>,
+  name: string,
+  fallback: number,
+  min = 1,
+): number {
+  const text = env[name]?.trim();
+  if (text === undefined || text === "") return fallback;
+  const value = Number(text);
+  if (!/^\d+$/.test(text) || !Number.isSafeInteger(value) || value < min) {
+    throw new Error(`${name} must be a whole number of at least ${String(min)}, got "${text}".`);
+  }
+  return value;
+}
+
+/**
  * Read the configuration.
  *
  * @param env - The environment.
@@ -109,13 +136,13 @@ export function readConfig(
       maxFeeSpeck: BigInt(env.SPONSOR_MAX_FEE_SPECK ?? DEFAULT_MAX_FEE_SPECK.toString()),
       budgetSpeck: BigInt(budgetText),
       rateLimit: {
-        maxRequests: Number(env.SPONSOR_RATE_MAX ?? DEFAULT_RATE_LIMIT.maxRequests),
-        windowMs: Number(env.SPONSOR_RATE_WINDOW_MS ?? DEFAULT_RATE_LIMIT.windowMs),
+        maxRequests: wholeNumber(env, "SPONSOR_RATE_MAX", DEFAULT_RATE_LIMIT.maxRequests),
+        windowMs: wholeNumber(env, "SPONSOR_RATE_WINDOW_MS", DEFAULT_RATE_LIMIT.windowMs),
       },
-      maxActionsPerTransaction: Number(env.SPONSOR_MAX_ACTIONS ?? 1),
+      maxActionsPerTransaction: wholeNumber(env, "SPONSOR_MAX_ACTIONS", 1),
     },
     seed: sponsorSeed(env, secretsDir),
-    port: Number(env.SPONSOR_PORT ?? 3300),
+    port: wholeNumber(env, "SPONSOR_PORT", 3300, 0),
     host: env.SPONSOR_HOST ?? "127.0.0.1",
     allowedOrigins: csv(env.SPONSOR_ALLOWED_ORIGINS ?? "*"),
     trustedProxies: csv(env.SPONSOR_TRUSTED_PROXIES),

@@ -14,9 +14,25 @@ import { facadeSigner } from "./signer.ts";
 const env = loadEnv();
 const node = getMidnightNodeConfig(env);
 const config = readConfig(env, ROOT, node.networkId);
+/**
+ * An endpoint with its path and query dropped: a hosted indexer's URL carries its project key.
+ *
+ * @param url - The endpoint.
+ * @returns Its origin, or a placeholder when it is not a URL.
+ */
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "(unreadable url)";
+  }
+};
+
 const say = (line: string) => process.stdout.write(`sponsor: ${line}\n`);
 
-say(`network ${node.networkId}, indexer ${node.indexerUrl}; syncing the sponsoring wallet...`);
+say(
+  `network ${node.networkId}, indexer ${hostOf(node.indexerUrl)}; syncing the sponsoring wallet...`,
+);
 const registry = new WalletRegistry(node, env);
 const { facade, keys } = await registry.wallet(config.seed, "sponsor");
 const signer = facadeSigner(facade, keys);

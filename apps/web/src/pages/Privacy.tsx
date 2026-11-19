@@ -88,8 +88,10 @@ export default function Privacy() {
         </p>
         <h3>Deposits and withdrawals take several steps on two chains</h3>
         <p>
-          Each takes two signatures from you and a series of permissionless steps carried by the
-          relayer. It is not instant, and the app shows every step.
+          A deposit is two transfers on Ethereum (the USDC, and a little ETH for the sweep's gas)
+          and two signatures on Midnight; a withdrawal is two signatures. In between, a series of
+          permissionless steps is carried by the relayer. It is not instant, and the app shows every
+          step.
         </p>
         <h3>Your device keeps your records</h3>
         <p>
@@ -108,8 +110,11 @@ export default function Privacy() {
         <p>
           Nothing. There are no analytics, no cookies and no account on our side. Payment links
           carry their terms after the <code>#</code>, which your browser never sends to a server.
-          The only network calls are to the Midnight indexer, the Ethereum RPC, the relayer and the
-          NightKit vault named in <Link to="/app/settings">Settings</Link>, and to your own wallet.
+          The only network calls are to the Midnight indexer and node, the Ethereum RPC, and the
+          relayer, backend, fee sponsor, card snapshot service, proof server and NightKit vault
+          named in <Link to="/app/settings">Settings</Link>, and to your own wallet. None is given a
+          key; the snapshot service sees when a card is made and opened, and the relayer sees the
+          addresses it carries.
         </p>
       </Prose>
     </div>

@@ -49,6 +49,29 @@ for (const p of PUBLIC) {
   });
 }
 
+// The menu a narrow screen opens must fill the screen and reach every section. It once opened as a
+// strip as tall as the header, with the links beneath the page, and no page test opened it.
+for (const width of [390, 900]) {
+  test(`the menu opens full height and returns focus, at ${String(width)}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 700 });
+    await page.goto("/");
+    const opener = page.getByRole("button", { name: "Open menu" });
+    await opener.click();
+    const menu = page.getByRole("dialog", { name: "Menu" });
+    await expect(menu).toBeVisible();
+    const box = await menu.boundingBox();
+    expect(box?.height ?? 0, "the menu fills the viewport").toBeGreaterThanOrEqual(699);
+    for (const link of ["Backing", "Examine", "Docs", "Tour"]) {
+      const target = menu.getByRole("link", { name: link, exact: true });
+      await expect(target).toBeInViewport();
+    }
+    await expect(menu.getByRole("link", { name: "Settings" })).toBeAttached();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(opener).toBeFocused();
+  });
+}
+
 const CONNECTED: { path: string; name: string; heading: RegExp }[] = [
   { path: "/app", name: "app-home", heading: /Private dollars/ },
   { path: "/app/add", name: "app-add", heading: /Turn USDC into private dollars/ },

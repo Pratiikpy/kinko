@@ -64,7 +64,15 @@ function build(overrides: Partial<SponsorSigner>, debug = false, overridePolicy 
   return { service, logs };
 }
 
-const req = { protocol: SPONSOR_PROTOCOL_VERSION, tx: "aabb", caller: "web" };
+/** A request whose transaction differs each time it is read, as every real client's does. */
+let made = 0;
+const req = {
+  protocol: SPONSOR_PROTOCOL_VERSION,
+  get tx() {
+    return `aabb${String((made += 1))}`;
+  },
+  caller: "web",
+};
 const caller = { id: "ip:203.0.113.9", label: "web" };
 
 const refusal = (promise: Promise<unknown>): Promise<SponsorError> =>

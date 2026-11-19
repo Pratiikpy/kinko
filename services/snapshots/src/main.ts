@@ -16,6 +16,20 @@ import { Keeper } from "./keeper.ts";
 import { createSnapshotServer } from "./server.ts";
 import { SnapshotStore } from "./store.ts";
 
+/**
+ * An endpoint with its path and query dropped: a hosted indexer's URL carries its project key.
+ *
+ * @param url - The endpoint.
+ * @returns Its origin, or a placeholder when it is not a URL.
+ */
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "(unreadable url)";
+  }
+};
+
 const say = (line: string): void => {
   process.stdout.write(`snapshots: ${line}\n`);
 };
@@ -45,7 +59,7 @@ const env = loadEnv();
 const node = getMidnightNodeConfig(env);
 const config = readConfig(env, ROOT, node.networkId);
 
-say(`network ${node.networkId}, indexer ${node.indexerUrl}`);
+say(`network ${node.networkId}, indexer ${hostOf(node.indexerUrl)}`);
 let chain: string | undefined;
 for (let attempt = 1; chain === undefined; attempt++) {
   try {

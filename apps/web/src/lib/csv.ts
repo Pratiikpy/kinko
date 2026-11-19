@@ -120,6 +120,14 @@ export function parseBatch(text: string): ParsedBatch {
       });
       return;
     }
+    // An unquoted "1,250.00" splits into "1" and "250.00": the amount would be $1 and the rest a memo.
+    if (/^\d{1,3}$/.test(rawAmount) && /^\d{3}(\.\d+)?$/.test(rest[0] ?? "")) {
+      issues.push({
+        line,
+        message: `"${rawAmount},${rest[0] ?? ""}" has a comma inside the amount. Write it without one, or put it in quotes.`,
+      });
+      return;
+    }
     const amount = parseAmount(rawAmount);
     if (!amount.ok) {
       issues.push({ line, message: AMOUNT_ERROR_TEXT[amount.error] });
