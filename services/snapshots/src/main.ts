@@ -100,6 +100,7 @@ const server = createSnapshotServer({
   store,
   networkId: node.networkId,
   allowedOrigins: config.allowedOrigins,
+  trustProxyHops: config.trustProxyHops,
 });
 server.listen(config.port, config.host, () => {
   say(`listening on http://${config.host}:${String(config.port)}/v1/card-snapshot`);

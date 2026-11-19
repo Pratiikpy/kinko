@@ -13,6 +13,8 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
+import { publishedSnapshot } from "@kinko/card/snapshot";
+
 import type { SnapshotStore } from "./store.ts";
 
 /** The characters of a chain's identity a birth carries. */
@@ -37,7 +39,32 @@ export interface ServerOptions {
   /** Requests one client may make per window. */
   readonly rateMax?: number;
   readonly rateWindowMs?: number;
+  /**
+   * How many proxies of our own sit in front of this, counted from the right of
+   * `X-Forwarded-For`. 0 (the default) trusts only the socket's address; behind a proxy that would
+   * put every caller in one bucket, so a proxied deployment sets it. The leftmost entries are
+   * whatever the caller sent, so they are never read.
+   */
+  readonly trustProxyHops?: number;
   readonly now?: () => number;
+}
+
+/**
+ * The address a request's rate limit is counted against.
+ *
+ * @param request - The request.
+ * @param hops - Proxies of ours in front of the server, counted from the right of `X-Forwarded-For`.
+ * @returns The caller's address, as far as it can be believed.
+ */
+function clientOf(request: IncomingMessage, hops: number): string {
+  const socket = request.socket.remoteAddress ?? "unknown";
+  if (hops < 1) return socket;
+  const header = request.headers["x-forwarded-for"];
+  const entries = (Array.isArray(header) ? header.join(",") : (header ?? ""))
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
+  return entries[entries.length - hops] ?? socket;
 }
 
 const json = (
@@ -78,18 +105,27 @@ export function createSnapshotServer(options: ServerOptions): Server {
   const rateMax = options.rateMax ?? 120;
   const rateWindowMs = options.rateWindowMs ?? 60_000;
   const now = options.now ?? Date.now;
+  const hops = options.trustProxyHops ?? 0;
   const windows = new Map<string, { start: number; count: number }>();
+  let swept = now();
 
   const limited = (client: string): boolean => {
     const t = now();
-    for (const [key, w] of windows) if (t - w.start >= rateWindowMs) windows.delete(key);
+    // Expired windows are dropped once a window, not on every request: a scan per request made
+    // the cost of each call grow with the number of distinct clients.
+    if (t - swept >= rateWindowMs) {
+      for (const [key, w] of windows) if (t - w.start >= rateWindowMs) windows.delete(key);
+      swept = t;
+    }
     const w = windows.get(client);
-    if (w === undefined) {
+    if (w !== undefined && t - w.start >= rateWindowMs) windows.delete(client);
+    const current = windows.get(client);
+    if (current === undefined) {
       windows.set(client, { start: t, count: 1 });
       return false;
     }
-    w.count += 1;
-    return w.count > rateMax;
+    current.count += 1;
+    return current.count > rateMax;
   };
 
   return createServer((request, response) => {
@@ -108,7 +144,7 @@ export function createSnapshotServer(options: ServerOptions): Server {
       );
       return;
     }
-    if (limited(request.socket.remoteAddress ?? "unknown")) {
+    if (limited(clientOf(request, hops))) {
       json(response, 429, { error: "Too many requests; try again in a minute." }, cors);
       return;
     }
@@ -174,7 +210,11 @@ export function createSnapshotServer(options: ServerOptions): Server {
       json(
         response,
         200,
-        { offset: found.offset.toString(), takenAt: found.takenAt, snapshot: found.snapshot },
+        {
+          offset: found.offset.toString(),
+          takenAt: found.takenAt,
+          snapshot: publishedSnapshot(found.snapshot),
+        },
         cache,
       );
       return;

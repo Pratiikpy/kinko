@@ -3,8 +3,8 @@
 //
 // A card made at event N starts from the newest snapshot taken at or before N, so a snapshot is
 // never stale for it, only further back than it could be. Retention therefore keeps recent
-// snapshots densely, where new cards are made, and older ones thinly: a card opened a month
-// after it was made still finds one near its birth.
+// snapshots densely, where new cards are made, and older ones thinly, up to a month back. A card
+// opened later than that finds none (the newest is always kept) and opens the slow way.
 //
 // A snapshot is a tree of one chain. A development chain that is reset starts its events again
 // from zero, and a snapshot from the old chain would hand a card a tree the new chain never had,

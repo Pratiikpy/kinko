@@ -8,7 +8,7 @@
 
 import { readFileSync, statSync } from "node:fs";
 
-import { snapshotOffset, snapshotProblem } from "@kinko/card";
+import { publishedSnapshot, snapshotOffset, snapshotProblem } from "@kinko/card/snapshot";
 
 import type { StoredSnapshot } from "./store.ts";
 
@@ -38,6 +38,6 @@ export function loadBootstrap(path: string, networkId: string): StoredSnapshot {
   return {
     offset: snapshotOffset(snapshot),
     takenAt: Number.isNaN(saved) ? statSync(path).mtimeMs : saved,
-    snapshot,
+    snapshot: publishedSnapshot(snapshot),
   };
 }

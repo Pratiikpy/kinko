@@ -8,6 +8,8 @@ export interface SnapshotsConfig {
   readonly port: number;
   readonly host: string;
   readonly allowedOrigins: readonly string[];
+  /** Proxies of ours in front of the server; see {@link ServerOptions.trustProxyHops}. */
+  readonly trustProxyHops: number;
   /** How often to take a snapshot, ms. */
   readonly intervalMs: number;
   /** Where the published snapshots are kept. */
@@ -43,10 +45,15 @@ export function readConfig(
   if (!Number.isInteger(intervalMs) || intervalMs <= 0) {
     throw new Error("SNAPSHOTS_INTERVAL_MS must be a positive whole number of milliseconds.");
   }
+  const trustProxyHops = Number(env.SNAPSHOTS_TRUST_PROXY_HOPS ?? 0);
+  if (!Number.isInteger(trustProxyHops) || trustProxyHops < 0) {
+    throw new Error("SNAPSHOTS_TRUST_PROXY_HOPS must be a whole number, 0 or more.");
+  }
   return {
     port: Number(env.SNAPSHOTS_PORT ?? 3400),
     host: env.SNAPSHOTS_HOST ?? "127.0.0.1",
     allowedOrigins: csv(env.SNAPSHOTS_ALLOWED_ORIGINS ?? "*"),
+    trustProxyHops,
     intervalMs,
     storePath: env.SNAPSHOTS_STORE ?? join(dir, "card-snapshots.json"),
     seedPath: env.SNAPSHOTS_SEED_FILE ?? join(dir, "card-snapshots-seed"),

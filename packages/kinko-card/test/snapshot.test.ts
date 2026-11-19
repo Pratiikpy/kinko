@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { cardSnapshot, snapshotOffset, snapshotProblem } from "../src/snapshot.ts";
+import {
+  cardSnapshot,
+  publishedSnapshot,
+  snapshotOffset,
+  snapshotProblem,
+} from "../src/snapshot.ts";
 
 const ADDRESSES = {
   shielded: "mn_shield-addr_preprod1card",
@@ -55,6 +60,12 @@ describe("snapshotProblem", () => {
     expect(snapshotProblem(base({ coinHashes: undefined }), "preprod")).toMatch(/carries coins/);
     expect(snapshotProblem("nope", "preprod")).toMatch(/not JSON/);
   });
+
+  it("refuses a snapshot that defers its coin check, which could carry coins the card would show", () => {
+    expect(snapshotProblem(base({ coinHashesPending: true }), "preprod")).toMatch(/defers/);
+    expect(snapshotProblem(base({ coinHashesPending: "yes" }), "preprod")).toMatch(/defers/);
+    expect(snapshotProblem(base({ coinHashesPending: false }), "preprod")).toBeUndefined();
+  });
 });
 
 describe("cardSnapshot", () => {
@@ -99,5 +110,23 @@ describe("cardSnapshot", () => {
       ),
     ).toThrow(/carries coins/);
     expect(() => cardSnapshot("nope", ADDRESSES, "preprod")).toThrow(/not JSON/);
+  });
+});
+
+describe("publishedSnapshot", () => {
+  it("keeps the tree and drops the keys of the wallet that wrote it", () => {
+    const published = JSON.parse(
+      publishedSnapshot(base({ publicKeys: { coinPublicKey: "aa", encryptionPublicKey: "bb" } })),
+    ) as { publicKeys: Record<string, string>; offset: unknown; version: unknown };
+    expect(published.publicKeys).toEqual({
+      coinPublicKey: "00".repeat(32),
+      encryptionPublicKey: "00".repeat(32),
+    });
+    expect(published.version).toBe("v1");
+    expect(JSON.stringify(published)).not.toContain('"aa"');
+  });
+
+  it("is still a snapshot a card can start from", () => {
+    expect(snapshotProblem(publishedSnapshot(base()), "preprod")).toBeUndefined();
   });
 });

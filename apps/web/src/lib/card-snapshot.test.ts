@@ -80,6 +80,23 @@ describe("snapshotFor", () => {
     expect(await snapshotFor(BIRTH)).toBeUndefined();
   });
 
+  it("refuses a snapshot taken after the card was made, which would skip the card's own funding", async () => {
+    vi.stubGlobal("fetch", respond(200, { snapshot: snapshot({ offset: "1996142" }) }));
+    expect(await snapshotFor(BIRTH)).toBeUndefined();
+    vi.stubGlobal("fetch", respond(200, { snapshot: snapshot({ offset: "999999999" }) }));
+    expect(await snapshotFor(BIRTH)).toBeUndefined();
+    // At the birth, and before it, are fine.
+    vi.stubGlobal("fetch", respond(200, { snapshot: snapshot({ offset: "1996141" }) }));
+    expect(await snapshotFor(BIRTH)).toBeDefined();
+    vi.stubGlobal("fetch", respond(200, { snapshot: snapshot({ offset: "100" }) }));
+    expect(await snapshotFor(BIRTH)).toBeDefined();
+  });
+
+  it("refuses a snapshot that defers its coin check", async () => {
+    vi.stubGlobal("fetch", respond(200, { snapshot: snapshot({ coinHashesPending: true }) }));
+    expect(await snapshotFor(BIRTH)).toBeUndefined();
+  });
+
   it("refuses a snapshot a card cannot start from, so the card replays the chain instead", async () => {
     const carries = snapshot({ coinHashes: { c: { nullifier: "n", commitment: "c" } } });
     vi.stubGlobal("fetch", respond(200, { snapshot: carries }));

@@ -12,7 +12,14 @@ import { useAsync } from "../hooks/useAsync.ts";
 import { useCall } from "../hooks/useCall.ts";
 import { useCardWallet } from "../hooks/useCardWallet.ts";
 import { useKusdTokenType } from "../hooks/useKusd.ts";
-import { type CardInput, defaultFees, entropyOf, feePayer, parseCardInput } from "../lib/card.ts";
+import {
+  type CardInput,
+  defaultFees,
+  entropyOf,
+  feePayer,
+  parseCardInput,
+  withoutBirth,
+} from "../lib/card.ts";
 import { CONTRACTS } from "../lib/config.ts";
 import { formatAmount, fromHex, toHex } from "../lib/format.ts";
 import { queryContractData, readerFor } from "../lib/midnight/providers.ts";
@@ -238,6 +245,24 @@ export default function HeldCard() {
                 <ConnectButton label="Connect to keep it" />
               )}
             </div>
+          </div>
+        ) : null}
+
+        {input.birth &&
+        ((ready && balance === 0n && moved === null) || session.status === "error") ? (
+          <div className="space-y-1">
+            <p className="text-sm text-ink-2">
+              This card started from a published copy of the chain as it was when the card was made.
+              If its balance is not what you expect, read the whole chain instead. That takes much
+              longer, and it does not depend on the copy at all.
+            </p>
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-shu-ink hover:underline"
+              onClick={() => void open(withoutBirth(input), defaultFees(account), pin)}
+            >
+              Read the whole chain
+            </button>
           </div>
         ) : null}
 

@@ -2,7 +2,7 @@ import { recoveryPhrase } from "@kinko/card/seed";
 import { encodeGiftCard, encodePinCard, KinkoGift } from "@kinko/kinko-pay";
 import { describe, expect, it } from "vitest";
 
-import { entropyOf, parseCardInput } from "./card.ts";
+import { entropyOf, parseCardInput, withoutBirth } from "./card.ts";
 
 const SECRET = "c1".repeat(32);
 const ISSUER = "11".repeat(32);
@@ -51,9 +51,28 @@ describe("parseCardInput", () => {
     expect(parseCardInput(phrase)).not.toHaveProperty("birth");
   });
 
-  it("refuses a phrase whose last word is not a birth and not a word", () => {
+  it("reads a birth as a holder may have typed it, and drops one it cannot read", () => {
     const phrase = recoveryPhrase(new Uint8Array(32).fill(5));
-    expect(parseCardInput(`${phrase} 1996141`)).toBeUndefined();
+    for (const typed of [
+      "1996141-1A2B3C4D",
+      "birth:1996141-1a2b3c4d",
+      "Birth: 1996141-1a2b3c4d".replace(": ", ":"),
+      "1996141-1a2b3c4d.",
+    ]) {
+      expect(parseCardInput(`${phrase} ${typed}`)).toHaveProperty("birth", "1996141-1a2b3c4d");
+    }
+    // A damaged birth does not make a right phrase wrong: the card opens, the slow way.
+    for (const typed of ["1996141", "1996141-1a2b3c4", "soon"]) {
+      const parsed = parseCardInput(`${phrase} ${typed}`);
+      expect(parsed?.kind).toBe("phrase");
+      expect(parsed).not.toHaveProperty("birth");
+    }
+  });
+
+  it("is not a card when the words are wrong, with or without a birth", () => {
+    const words = recoveryPhrase(new Uint8Array(32).fill(5)).split(" ");
+    expect(parseCardInput(`${words.slice(0, 23).join(" ")} 1996141-1a2b3c4d`)).toBeUndefined();
+    expect(parseCardInput(`${words.slice(0, 22).join(" ")} notaword`)).toBeUndefined();
   });
 
   it("reads a recovery phrase, whatever its spacing or case", () => {
@@ -85,5 +104,25 @@ describe("entropyOf", () => {
     const a = hex(await entropyOf(input, "204817"));
     expect(a).not.toBe(SECRET);
     expect(hex(await entropyOf(input, "204817"))).toBe(a);
+  });
+});
+
+describe("withoutBirth", () => {
+  const birth = "1996141-1a2b3c4d";
+  it("opens any kind of card the slow way, keeping everything else", () => {
+    expect(withoutBirth({ kind: "pin", secret: SECRET, birth })).toEqual({
+      kind: "pin",
+      secret: SECRET,
+    });
+    const entropy = new Uint8Array(32).fill(5);
+    expect(withoutBirth({ kind: "phrase", entropy, birth })).toEqual({ kind: "phrase", entropy });
+    const gift = parseCardInput(
+      `https://kinko.example/gift#${encodeGiftCard({ secret: SECRET, token: KinkoGift.TokenKind.KUSD, issuerId: ISSUER }, undefined, birth)}`,
+    );
+    expect(gift).toHaveProperty("birth", birth);
+    if (gift === undefined) throw new Error("the gift link was not read");
+    const slow = withoutBirth(gift);
+    expect(slow).toMatchObject({ kind: "gift", secret: SECRET, issuerId: ISSUER });
+    expect(slow).not.toHaveProperty("birth");
   });
 });

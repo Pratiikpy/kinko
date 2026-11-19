@@ -12,10 +12,12 @@
 // That tree is what a synced shielded wallet that holds no coins serializes: its
 // snapshot names the keys it was written for and carries the tree as of its
 // last applied event. Swapping the keys for the card's is the whole conversion.
-// The snapshot is not trusted with anything: a tree that differs from the
-// chain's makes the card's proofs fail on the network, which refuses them, so
-// the worst a bad snapshot does is leave a card unable to pay until it is
-// opened again without one.
+// The snapshot is not trusted with anything it can be checked for: its network,
+// its format, that it holds no coin and defers no coin check. A tree that differs
+// from the chain's stalls the wallet, which then starts again from the first
+// event. What cannot be checked here is that the tree is the chain's right one, so
+// the worst a bad snapshot does is leave a card unable to pay until it is opened
+// again without one.
 
 import type { CardAddresses } from "./keys.ts";
 
@@ -28,6 +30,7 @@ interface ShieldedSnapshot {
   readonly networkId?: unknown;
   readonly offset?: unknown;
   readonly coinHashes?: unknown;
+  readonly coinHashesPending?: unknown;
   readonly publicKeys?: unknown;
 }
 
@@ -86,6 +89,12 @@ export function snapshotProblem(snapshot: string, networkId: string): string | u
   if (typeof hashes !== "object" || hashes === null || Object.keys(hashes).length > 0) {
     return "The snapshot carries coins, so a card cannot start from it.";
   }
+  // The wallet checks a snapshot's coins against their hashes unless the snapshot says the hashes
+  // are still to be computed, in which case it computes them with the card's own keys and counts
+  // what it finds. A snapshot that asks for that could carry coins the card would then display.
+  if (parsed.coinHashesPending !== undefined && parsed.coinHashesPending !== false) {
+    return "The snapshot defers its coin check, so a card cannot start from it.";
+  }
   return undefined;
 }
 
@@ -109,4 +118,23 @@ export function cardSnapshot(base: string, addresses: CardAddresses, networkId: 
       encryptionPublicKey: addresses.encryptionPublicKey,
     },
   });
+}
+
+/** The keys a published snapshot names: placeholders, since a card swaps in its own. */
+const PLACEHOLDER_KEYS = {
+  coinPublicKey: "00".repeat(32),
+  encryptionPublicKey: "00".repeat(32),
+} as const;
+
+/**
+ * A snapshot as it is published: the tree and nothing that names the wallet it was written by.
+ * A card replaces the keys anyway ({@link cardSnapshot}), so naming the follower's would only tell
+ * anyone where to send it a coin.
+ *
+ * @param snapshot - A shielded wallet snapshot, as the wallet serializes it.
+ * @returns The same snapshot with placeholder keys.
+ * @throws {Error} When this is not a snapshot.
+ */
+export function publishedSnapshot(snapshot: string): string {
+  return JSON.stringify({ ...parse(snapshot), publicKeys: PLACEHOLDER_KEYS });
 }

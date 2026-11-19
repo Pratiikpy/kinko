@@ -25,6 +25,23 @@ export type CardInput =
   | { readonly kind: "pin"; readonly secret: string; readonly birth?: string }
   | { readonly kind: "phrase"; readonly entropy: Uint8Array; readonly birth?: string };
 
+/** Words in a card's recovery phrase. */
+const PHRASE_WORDS = 24;
+
+/**
+ * A birth as a holder may have typed it: with a label, in capitals, or with a trailing stop.
+ *
+ * @param text - The 25th item after a recovery phrase.
+ * @returns The birth, or undefined when it cannot be read as one.
+ */
+function readBirth(text: string): string | undefined {
+  const candidate = text
+    .replace(/^birth[:=]?/i, "")
+    .replace(/[.,;]+$/, "")
+    .toLowerCase();
+  return isBirth(candidate) ? candidate : undefined;
+}
+
 /**
  * Read a card from what a holder pasted: a gift card link, a PIN card link, or
  * a 24-word recovery phrase, which may be followed by the card's birth (the card's page shows it
@@ -40,10 +57,28 @@ export function parseCardInput(text: string): CardInput | undefined {
   if (gift) return { kind: "gift", ...gift };
   const pin = decodePinCard(t);
   if (pin) return { kind: "pin", secret: pin.secret, ...(pin.birth ? { birth: pin.birth } : {}) };
-  const last = /\s(\S+)$/.exec(t)?.[1];
-  const birth = isBirth(last) ? last : undefined;
-  const entropy = entropyOfPhrase(birth ? t.slice(0, t.length - birth.length) : t);
+  const words = t.split(/\s+/);
+  // 24 words, then optionally a 25th item: the birth, which a holder may have typed with a label,
+  // capitals or a full stop. One that cannot be read is dropped, as a link's is, and the card opens
+  // the slow way rather than refusing a phrase that is right.
+  const extra = words.length === PHRASE_WORDS + 1 ? words[PHRASE_WORDS] : undefined;
+  const birth = extra === undefined ? undefined : readBirth(extra);
+  const entropy = entropyOfPhrase(extra === undefined ? t : words.slice(0, PHRASE_WORDS).join(" "));
   return entropy ? { kind: "phrase", entropy, ...(birth ? { birth } : {}) } : undefined;
+}
+
+/**
+ * The same card without its birth, to open the slow way: the whole chain is read, so a snapshot
+ * that was wrong in any way cannot matter.
+ *
+ * @param input - The card.
+ * @returns The card with no birth.
+ */
+export function withoutBirth(input: CardInput): CardInput {
+  if (input.kind === "pin") return { kind: "pin", secret: input.secret };
+  if (input.kind === "phrase") return { kind: "phrase", entropy: input.entropy };
+  const { birth: _birth, ...gift } = input;
+  return gift;
 }
 
 /**

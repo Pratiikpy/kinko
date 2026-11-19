@@ -122,6 +122,12 @@ test("a card and its PIN pay an invoice with no wallet, then the owner freezes i
   await phrasePage.getByRole("button", { name: "Open the card" }).click();
   await expect(phrasePage.getByTestId("card-balance")).toHaveText("$3.00", { timeout: OPEN_MS });
   expect((await phraseStarted).status()).toBe(200);
+  // The wallet says where it started: a 200 alone would also pass if the snapshot were dropped
+  // and the card had quietly replayed the chain.
+  await expect(phrasePage.getByTestId("card-balance")).toHaveAttribute(
+    "data-started-from",
+    "snapshot",
+  );
   await phrasePage.close();
 
   await page.goto(payLink);
@@ -134,6 +140,7 @@ test("a card and its PIN pay an invoice with no wallet, then the owner freezes i
   await expect(page.getByTestId("card-balance")).toHaveText("$3.00", { timeout: OPEN_MS });
   // The card started from the service's tree at its birth, rather than replaying the chain.
   expect((await started).status()).toBe(200);
+  await expect(page.getByTestId("card-balance")).toHaveAttribute("data-started-from", "snapshot");
   await expect(page.getByText("Kinko pays the network fee. You need no wallet.")).toBeVisible();
   await page.screenshot({ path: `${RESULTS}/shots/card-pay.png`, fullPage: true });
   await page.getByRole("button", { name: "Pay $1.25 from the card" }).click();

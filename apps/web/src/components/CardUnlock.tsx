@@ -157,7 +157,11 @@ export function CardBalance({
   return (
     <div className="rounded-2xl bg-surface-2 p-5" aria-live="polite">
       <p className="text-sm text-ink-2">This card holds</p>
-      <p className="tabular mt-1 font-display text-4xl text-ink" data-testid="card-balance">
+      <p
+        className="tabular mt-1 font-display text-4xl text-ink"
+        data-testid="card-balance"
+        data-started-from={session.wallet.startedFrom}
+      >
         ${formatAmount(balance)}
       </p>
       {balance === 0n ? <p className="mt-2 text-sm text-ink-3">{emptyText}</p> : null}

@@ -267,7 +267,10 @@ describe("Keeper", () => {
 const CHAIN = "abcdef0123456789";
 
 describe("the server", () => {
-  async function serve(store: SnapshotStore, extra: { rateMax?: number } = {}) {
+  async function serve(
+    store: SnapshotStore,
+    extra: { rateMax?: number; trustProxyHops?: number } = {},
+  ) {
     const server = createSnapshotServer({ store, networkId: NETWORK, ...extra });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const base = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
@@ -296,7 +299,11 @@ describe("the server", () => {
       expect(found.status).toBe(200);
       const body = (await found.json()) as { offset: string; snapshot: string };
       expect(body.offset).toBe("100");
-      expect(body.snapshot).toBe(snapshot(100));
+      // The tree is served; the keys of the wallet that wrote it are not.
+      expect(JSON.parse(body.snapshot)).toEqual({
+        ...(JSON.parse(snapshot(100)) as object),
+        publicKeys: { coinPublicKey: "00".repeat(32), encryptionPublicKey: "00".repeat(32) },
+      });
     } finally {
       await close();
     }
@@ -385,6 +392,25 @@ describe("the server", () => {
     }
   });
 
+  it("counts a proxied client by the address its own proxy saw, never by what the caller sent", async () => {
+    const { base, close } = await serve(SnapshotStore.open(join(dir, "s.json"), CHAIN), {
+      rateMax: 2,
+      trustProxyHops: 1,
+    });
+    const ask = async (forwarded: string): Promise<number> =>
+      (await fetch(`${base}/healthz`, { headers: { "X-Forwarded-For": forwarded } })).status;
+    try {
+      // One real client behind the proxy, varying what it claims on the left: one bucket.
+      expect([await ask("a, 9.9.9.9"), await ask("b, 9.9.9.9"), await ask("c, 9.9.9.9")]).toEqual([
+        200, 200, 429,
+      ]);
+      // Another real client is not held back by it.
+      expect(await ask("8.8.8.8")).toBe(200);
+    } finally {
+      await close();
+    }
+  });
+
   it("limits a client that asks too often", async () => {
     const { base, close } = await serve(SnapshotStore.open(join(dir, "s.json"), CHAIN), {
       rateMax: 3,
@@ -445,6 +471,9 @@ describe("readConfig", () => {
     ).toMatchObject({ port: 4400, allowedOrigins: ["https://a", "https://b"] });
     expect(() => readConfig({ SNAPSHOTS_INTERVAL_MS: "0" }, "/r", "n")).toThrow(/positive/);
     expect(() => readConfig({ SNAPSHOTS_INTERVAL_MS: "1.5" }, "/r", "n")).toThrow(/positive/);
+    expect(readConfig({}, "/r", "n").trustProxyHops).toBe(0);
+    expect(readConfig({ SNAPSHOTS_TRUST_PROXY_HOPS: "1" }, "/r", "n").trustProxyHops).toBe(1);
+    expect(() => readConfig({ SNAPSHOTS_TRUST_PROXY_HOPS: "-1" }, "/r", "n")).toThrow(/whole/);
   });
 });
 
@@ -458,10 +487,15 @@ describe("loadBootstrap", () => {
         snapshots: { shielded: snapshot(1_987_901) },
       }),
     );
-    expect(loadBootstrap(path, NETWORK)).toEqual({
+    const loaded = loadBootstrap(path, NETWORK);
+    expect(loaded).toMatchObject({
       offset: 1_987_901n,
       takenAt: Date.parse("2026-11-18T06:08:55.177Z"),
-      snapshot: snapshot(1_987_901),
+    });
+    // What is kept is the tree, with the keys of the wallet it came from swapped out.
+    expect(JSON.parse(loaded.snapshot)).toEqual({
+      ...(JSON.parse(snapshot(1_987_901)) as object),
+      publicKeys: { coinPublicKey: "00".repeat(32), encryptionPublicKey: "00".repeat(32) },
     });
   });
 

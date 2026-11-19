@@ -8,7 +8,7 @@
 // Neither call may stand between a person and their card. Both give up quickly and say nothing
 // when the service is absent, slow or wrong; the card then opens the slow way, as it always could.
 
-import { snapshotProblem } from "@kinko/card/snapshot";
+import { snapshotOffset, snapshotProblem } from "@kinko/card/snapshot";
 import { isBirth } from "@kinko/kinko-pay";
 
 import { NETWORK_ID, SNAPSHOTS_URL } from "./config.ts";
@@ -57,5 +57,10 @@ export async function snapshotFor(birth: string | undefined): Promise<string | u
   )) as { snapshot?: unknown } | undefined;
   const snapshot = body?.snapshot;
   if (typeof snapshot !== "string") return undefined;
-  return snapshotProblem(snapshot, NETWORK_ID) === undefined ? snapshot : undefined;
+  if (snapshotProblem(snapshot, NETWORK_ID) !== undefined) return undefined;
+  // A tree from after the card was made would skip the events that funded it, and the card would
+  // show nothing: the service is believed about the chain only as far as it can be checked here.
+  return snapshotOffset(snapshot) <= BigInt(birth.slice(0, birth.indexOf("-")))
+    ? snapshot
+    : undefined;
 }

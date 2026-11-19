@@ -73,6 +73,10 @@ test("a recipient opens a $2.50 gift card without a wallet, then keeps it", asyn
   });
   // The card started from the service's tree at its birth, rather than replaying the chain.
   expect((await started).status()).toBe(200);
+  await expect(recipient.page.getByTestId("card-balance")).toHaveAttribute(
+    "data-started-from",
+    "snapshot",
+  );
   await shot(recipient, "gift-opened");
 
   const recipientBefore = await recipient.wallet.balance(kusd);
