@@ -155,8 +155,8 @@ const TOOLS: readonly Tool[] = [
     title: "Create an invoice",
     description:
       "Create a private invoice and a hosted checkout link. The amount and the merchant's keys are never sent to the Kinko backend: " +
-      "they travel only inside the link's fragment, which a browser does not send to a server. The link is returned for you to give to the payer. " +
-      "The invoice still has to be published on chain with the merchant's wallet before it can be paid: the merchant opens the Kinko app's Invoices page and chooses the saved invoice file. This tool cannot pay or publish anything. " +
+      "they travel only inside the link's fragment, which a browser does not send to a server. The link is returned for the merchant, not yet for the payer. " +
+      "Do not give the link to the payer until the invoice is published on chain with the merchant's wallet (the merchant opens the Kinko app's Invoices page and chooses the saved invoice file): until then, anyone who sees the link can publish the same invoice first and own it, and the merchant could no longer cancel or refund it. This tool cannot pay or publish anything. " +
       "Note that the link contains the invoice's terms, so the assistant sees them; use kinko_create_draft to avoid that.",
     annotations: WRITES,
     inputSchema: {
