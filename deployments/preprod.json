@@ -4,12 +4,12 @@
   "usdc": "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238",
   "kusdColor": "8ffaff6ad211473685e4c74ecd1f0697d2ed72d0026d4e1bf96cbea847256239",
   "oraclePublicKey": {
-    "x": "6c4509027823e03975f88ac6036fe113ec4bae04bf75ff4de107e52dfe2db292",
-    "y": "44fe72809dcecebb9955c9e3902d52b0d9602581f2eb3e0c7614b58db8561d70"
+    "x": "3dbde7e018e5185f695dc838e3ea5940c82c054ede22897377a7097be3a97bfa",
+    "y": "1d3a4dcd08f97ca49fdc22735972d519b66ea87415888cf4141ee87037d9096a"
   },
   "pay": {
-    "contractAddress": "01d7024cada69c5b9e2b572817b1c57f44db77d570b53a9e89aa371a328abaa2",
-    "txId": "00c03ff4db41716b831ee60a55eb37885b60c83537fd1234267294196492ee2ef2",
+    "contractAddress": "dcf0512fff6c2bcdaacff6247f9bac88c7c8dfe09cedee4c9918526fd87bb18d",
+    "txId": "008278a064bf495a6a1f9a34be39550a7c677cbd8b39f707b2a660d4463c61ef10",
     "circuits": [
       "create_invoice",
       "is_settled",
@@ -41,5 +41,5 @@
     "txId": "00052b98f30f5ea34071329c3723ee466bdc01529489b4d24de951be6b42094737",
     "circuits": ["file_record", "approve_case", "revoke_examiner", "open_case", "register_examiner"]
   },
-  "deployedAt": "2026-11-16T10:03:34.988Z"
+  "deployedAt": "2026-11-19T16:32:06.553Z"
 }

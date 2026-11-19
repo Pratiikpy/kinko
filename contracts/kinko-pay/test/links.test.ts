@@ -16,6 +16,7 @@ import {
   newInvoiceSecrets,
   newPaymentSecrets,
   nullifierOf,
+  ownerTagOf,
   pad32,
   randomBytes,
   toHex,
@@ -45,6 +46,7 @@ const TERMS: InvoiceTerms = {
   kind: InvoiceKind.MULTIPAY,
   token: TokenKind.KUSD,
   salt: SALT,
+  owner: ownerTagOf(OWNER),
   expiresAt: 1_900_000_000n,
 };
 
@@ -65,15 +67,15 @@ describe("payment links", () => {
     }
   });
 
-  it("still read a version 1 link, which has no payout encryption key", () => {
-    const v2 = JSON.parse(
+  it("refuse version 1 and 2 links, which carry no owner tag and name no commitment the contract knows", () => {
+    const v3 = JSON.parse(
       Buffer.from(encodePaymentLink(TERMS, ADDRESS, PAYOUT_ENC), "base64url").toString("utf8"),
     ) as Record<string, unknown>;
-    const { x: _x, ...rest } = v2;
-    const v1 = Buffer.from(JSON.stringify({ ...rest, v: 1 })).toString("base64url");
-    const decoded = decodePaymentLink(v1) ?? fail("version 1 link did not decode");
-    expect(hex(invoiceCommitmentOf(decoded.terms))).toBe(hex(invoiceCommitmentOf(TERMS)));
-    expect(decoded.payoutEncryptionKey).toBeUndefined();
+    const { o: _o, ...rest } = v3;
+    for (const version of [1, 2]) {
+      const old = Buffer.from(JSON.stringify({ ...rest, v: version })).toString("base64url");
+      expect(decodePaymentLink(old)).toBeUndefined();
+    }
   });
 
   it("refuse to encode a link without a valid payout encryption key", () => {
@@ -100,6 +102,8 @@ describe("payment links", () => {
       merchantPayout: { bytes: decoded.terms.payout },
       amount: decoded.terms.amount,
       salt: decoded.terms.salt,
+      // What the link carries is the public owner tag; the secret behind it stays with the merchant.
+      invoiceOwner: decoded.terms.owner,
       ownerSecret: new Uint8Array(32),
       payerKey: payment.payerKey,
       payerRefund: { bytes: payment.refundTo },
@@ -116,12 +120,15 @@ describe("payment links", () => {
       "utf8",
     );
     expect(json).not.toContain(hex(OWNER));
+    // The public tag is there: it is what binds the commitment to its owner.
+    expect(json).toContain(hex(ownerTagOf(OWNER)));
     expect(Object.keys(JSON.parse(json) as object).sort()).toEqual([
       "a",
       "e",
       "k",
       "m",
       "n",
+      "o",
       "p",
       "s",
       "t",
@@ -139,7 +146,9 @@ describe("payment links", () => {
     ) as Record<string, unknown>;
     const encode = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
     for (const broken of [
-      { ...good, v: 3 },
+      { ...good, v: 2 },
+      { ...good, o: "ab" },
+      { ...good, o: undefined },
       { ...good, x: "ab" },
       { ...good, x: undefined },
       { ...good, n: "-1" },

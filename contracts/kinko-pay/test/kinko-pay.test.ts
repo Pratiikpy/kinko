@@ -7,11 +7,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { invoiceCommitmentOf, receiptOf } from "../src/index.ts";
+import { invoiceCommitmentOf, ownerTagOf, receiptOf } from "../src/index.ts";
 import { bytes32, hex, paidTo } from "./harness.ts";
 import {
   AMOUNT,
-  type base,
+  base,
   coin,
   deployPay,
   InvoiceKind,
@@ -22,6 +22,7 @@ import {
   NATIVE,
   NO_EXPIRY,
   openInvoice,
+  OWNER,
   PAYER,
   PAYOUT,
   REFUND_TO,
@@ -54,6 +55,7 @@ describe("create_invoice", () => {
       kind: InvoiceKind.MULTIPAY,
       token: TokenKind.KUSD,
       salt: SALT,
+      owner: ownerTagOf(OWNER),
       expiresAt: NO_EXPIRY,
     });
     expect(hex(commitment)).toBe(hex(offChain));
@@ -64,6 +66,50 @@ describe("create_invoice", () => {
     await expect(
       h.call("create_invoice", InvoiceKind.STANDARD, TokenKind.NATIVE, NO_EXPIRY),
     ).rejects.toThrow("invoice already exists");
+  });
+});
+
+describe("invoice squatting", () => {
+  // The payment link carries every term of an invoice, so anyone who sees it knows them all. What
+  // they do not know is the owner secret, and the commitment is bound to its public tag.
+  const SQUATTER = bytes32(0x5a);
+
+  it("someone holding the whole link cannot create the invoice it names", async () => {
+    // The merchant has not published yet. The squatter publishes with every term from the link
+    // and an owner secret of their own.
+    const h = await deployPay(base({ ownerSecret: SQUATTER }));
+    const squatted = await h.call("create_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, 0n);
+
+    // What they created is a different invoice: its commitment is not the one the link names.
+    const linkCommitment = invoiceCommitmentOf({
+      merchantKey: MERCHANT,
+      payout: PAYOUT,
+      amount: AMOUNT,
+      kind: InvoiceKind.STANDARD,
+      token: TokenKind.KUSD,
+      salt: SALT,
+      owner: ownerTagOf(OWNER),
+      expiresAt: NO_EXPIRY,
+    });
+    expect(hex(squatted)).not.toBe(hex(linkCommitment));
+    expect(ledgerOf(h).invoices.member(linkCommitment)).toBe(false);
+
+    // The merchant can still publish the invoice the link names, and it is theirs alone.
+    h.as(base({ ownerSecret: OWNER }));
+    const real = await h.call("create_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, 0n);
+    expect(hex(real)).toBe(hex(linkCommitment));
+    expect(ledgerOf(h).invoices.lookup(real).owner).toEqual(ownerTagOf(OWNER));
+    await h.call("cancel_invoice", InvoiceKind.STANDARD, TokenKind.KUSD);
+  });
+
+  it("a payer paying the link cannot be steered into the squatter's invoice", async () => {
+    const h = await deployPay(base({ ownerSecret: SQUATTER }));
+    await h.call("create_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, 0n);
+    // The payer's private state carries the link's owner tag, which is the merchant's.
+    h.as(base({ ownerSecret: new Uint8Array(32), invoiceOwner: ownerTagOf(OWNER) }));
+    await expect(
+      h.call("settle_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, coin(AMOUNT, KUSD)),
+    ).rejects.toThrow("unknown invoice");
   });
 });
 

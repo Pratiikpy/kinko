@@ -28,7 +28,7 @@ export interface ReceiptProof {
 }
 
 interface Wire {
-  v: 1;
+  v: 2;
   c: string;
   m: string;
   p: string;
@@ -36,6 +36,8 @@ interface Wire {
   k: number;
   t: number;
   s: string;
+  /** The invoice's public owner tag, part of its commitment. */
+  o: string;
   e: string;
   pk: string;
   r: string;
@@ -57,7 +59,7 @@ const isDigits = (v: unknown): v is string => typeof v === "string" && DIGITS.te
  */
 export function encodeReceiptProof(p: ReceiptProof): string {
   const w: Wire = {
-    v: 1,
+    v: 2,
     c: p.contract,
     m: toHex(p.terms.merchantKey),
     p: toHex(p.terms.payout),
@@ -65,6 +67,7 @@ export function encodeReceiptProof(p: ReceiptProof): string {
     k: p.terms.kind,
     t: p.terms.token,
     s: toHex(p.terms.salt),
+    o: toHex(p.terms.owner),
     e: p.terms.expiresAt.toString(),
     pk: p.payerKey,
     r: p.refundTo,
@@ -84,9 +87,18 @@ export function decodeReceiptProof(text: string): ReceiptProof | null {
   const w = decodeLinkPayload(
     text.includes("#") ? text.slice(text.indexOf("#") + 1) : text.trim(),
   ) as Partial<Wire> | undefined;
-  if (w?.v !== 1) return null;
-  const { c, m, p, s, pk, r, n, e, i, k, t, ti } = w;
-  if (!isHex32(c) || !isHex32(m) || !isHex32(p) || !isHex32(s) || !isHex32(pk) || !isHex32(r))
+  // Version 1 proofs carry no owner tag, so they name commitments the contract no longer knows.
+  if (w?.v !== 2) return null;
+  const { c, m, p, s, o, pk, r, n, e, i, k, t, ti } = w;
+  if (
+    !isHex32(c) ||
+    !isHex32(m) ||
+    !isHex32(p) ||
+    !isHex32(s) ||
+    !isHex32(o) ||
+    !isHex32(pk) ||
+    !isHex32(r)
+  )
     return null;
   if (!isDigits(n) || !isDigits(e) || !isDigits(i)) return null;
   if (typeof k !== "number" || typeof t !== "number") return null;
@@ -99,6 +111,7 @@ export function decodeReceiptProof(text: string): ReceiptProof | null {
       kind: k,
       token: t,
       salt: fromHex(s),
+      owner: fromHex(o),
       expiresAt: BigInt(e),
     },
     payerKey: pk,

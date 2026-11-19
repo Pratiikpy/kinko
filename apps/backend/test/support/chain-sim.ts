@@ -13,6 +13,7 @@ import {
   KinkoPay,
   NATIVE_COLOR,
   newInvoiceSecrets,
+  ownerTagOf,
   type PayPrivateState,
   payWitnesses,
   toHex,
@@ -66,6 +67,7 @@ export const newTestInvoice = (over: Partial<InvoiceTerms> = {}): TestInvoice =>
     kind: KinkoPay.InvoiceKind.STANDARD,
     token: KinkoPay.TokenKind.NATIVE,
     salt: secrets.salt,
+    owner: ownerTagOf(secrets.ownerSecret),
     expiresAt: 0n,
     ...over,
   };
@@ -142,6 +144,8 @@ export class ChainSim {
       salt: invoice.terms.salt,
       amount: invoice.terms.amount,
       ownerSecret: invoice.ownerSecret,
+      // A payer's link carries the invoice's public owner tag.
+      invoiceOwner: invoice.terms.owner,
     };
   }
 

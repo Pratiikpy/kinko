@@ -14,6 +14,7 @@ import {
   type InvoiceTerms,
   KinkoPay,
   newInvoiceSecrets,
+  ownerTagOf,
   shieldedKeysOf,
   toHex,
 } from "@kinko/kinko-pay";
@@ -147,6 +148,7 @@ export const buildInvoice = (
     kind: KIND[kind],
     token: TOKEN[asset],
     salt: secrets.salt,
+    owner: ownerTagOf(secrets.ownerSecret),
     expiresAt:
       params.expiresInSeconds === undefined ? 0n : BigInt(nowSeconds + params.expiresInSeconds),
   };

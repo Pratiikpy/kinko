@@ -233,6 +233,11 @@ witness owner_secret(): Bytes<32>;
 // paid asset. Private like every other amount.
 witness converted_amount(): Uint<64>;
 
+// The invoice's owner tag, as the payment link carries it. The tag is public
+// (it is on the ledger), so a payer holding the link can reproduce the
+// commitment, which is bound to it. The owner secret behind it is not.
+witness invoice_owner(): Bytes<32>;
+
 // ---------------------------------------------------------------------------
 // Derivations, exported for the app
 // ---------------------------------------------------------------------------
@@ -251,21 +256,30 @@ circuit hash_terms(kind: InvoiceKind, token: TokenKind): Bytes<32> {
 // structure to invert and no term to subtract out. Binding amount, merchant,
 // payout key and terms together means an invoice cannot be settled on altered
 // terms or paid to anyone but the merchant.
+//
+// The owner tag is part of the pre-image. The payment link carries every other
+// term, so without it anyone who saw the link could create the invoice first
+// with an owner secret of their own and the merchant could never cancel or
+// refund it. With it, only the holder of the owner secret can create the
+// commitment the link names: another owner secret yields another tag and so
+// another commitment, which no link points at.
 export pure circuit invoice_commitment(
   merchant: Bytes<32>,
   payout: Bytes<32>,
   amount: Uint<64>,
   kind: InvoiceKind,
   token: TokenKind,
-  salt: Bytes<32>
+  salt: Bytes<32>,
+  owner: Bytes<32>
 ): Bytes<32> {
-  return persistentHash<Vector<6, Bytes<32>>>([
+  return persistentHash<Vector<7, Bytes<32>>>([
     domain_invoice(),
     persistentHash<Vector<2, Bytes<32>>>([domain_merchant(), merchant]),
     persistentHash<Vector<2, Bytes<32>>>([domain_payout(), payout]),
     persistentHash<Uint<64>>(amount),
     hash_terms(kind, token),
-    salt
+    salt,
+    persistentHash<Vector<2, Bytes<32>>>([domain_owner(), owner])
   ]);
 }
 
@@ -359,16 +373,35 @@ export pure circuit receipt_set_digest(receipts: Vector<4, Bytes<32>>): Bytes<32
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-// Rebuild this caller's commitment from their own private state. Reproducing
-// it is the proof of knowledge; it stands in for a signature.
-circuit own_commitment(kind: InvoiceKind, token: TokenKind): Bytes<32> {
+// Rebuild the commitment for an owner tag the caller has already derived from
+// their own secret. Reproducing it is the proof of knowledge; it stands in for
+// a signature, and it covers ownership too: the tag is in the pre-image, so
+// only the holder of the owner secret can name the commitment of their own
+// invoice. The tag is derived once by the caller and reused, so a prover
+// cannot answer the owner-secret witness differently for two uses of it.
+circuit commitment_for_owner(kind: InvoiceKind, token: TokenKind, owner: Bytes<32>): Bytes<32> {
   return invoice_commitment(
     merchant_key(),
     merchant_payout().bytes,
     invoice_amount(),
     kind,
     token,
-    invoice_salt()
+    invoice_salt(),
+    owner
+  );
+}
+
+// Rebuild the commitment a payer's link names. The owner tag comes from the
+// link, since a payer cannot hold the owner secret.
+circuit link_commitment(kind: InvoiceKind, token: TokenKind): Bytes<32> {
+  return invoice_commitment(
+    merchant_key(),
+    merchant_payout().bytes,
+    invoice_amount(),
+    kind,
+    token,
+    invoice_salt(),
+    invoice_owner()
   );
 }
 
@@ -458,7 +491,8 @@ export circuit create_invoice(
   token: TokenKind,
   expires_at: Uint<64>
 ): Bytes<32> {
-  const commitment = disclose(own_commitment(kind, token));
+  const owner = owner_tag(owner_secret());
+  const commitment = disclose(commitment_for_owner(kind, token, owner));
 
   assert(!invoices.member(commitment), "invoice already exists");
 
@@ -470,7 +504,7 @@ export circuit create_invoice(
     token: token,
     expires_at: expires_at,
     contributions: 0,
-    owner: owner_tag(owner_secret())
+    owner: disclose(owner)
   }));
 
   created.increment(1);
@@ -490,7 +524,7 @@ export circuit settle_invoice(
   token: TokenKind,
   coin: ShieldedCoinInfo
 ): Bytes<32> {
-  const commitment = disclose(own_commitment(kind, token));
+  const commitment = disclose(link_commitment(kind, token));
   const index = disclose(pinned_index(kind, payment_index()));
   const receipt = record_settlement(commitment, kind, payer_key(), payer_refund().bytes, index);
 
@@ -506,11 +540,12 @@ export circuit close_invoice(kind: InvoiceKind, token: TokenKind): [] {
   // it to SETTLED with nobody having paid, and is_settled is a public signal.
   assert(disclose(kind) != InvoiceKind.STANDARD, "standard invoices close on payment");
 
-  const commitment = disclose(own_commitment(kind, token));
+  // The commitment names only the holder of the owner secret, so finding the
+  // invoice is the proof of ownership: nobody else can derive its commitment.
+  const commitment = disclose(commitment_for_owner(kind, token, owner_tag(owner_secret())));
   assert(invoices.member(commitment), "unknown invoice");
   const state = invoices.lookup(commitment);
   assert(state.status == InvoiceStatus.OPEN, "invoice is not open");
-  assert(owner_tag(owner_secret()) == state.owner, "not the invoice owner");
 
   invoices.insert(commitment, disclose(InvoiceState {
     status: InvoiceStatus.SETTLED,
@@ -525,13 +560,12 @@ export circuit close_invoice(kind: InvoiceKind, token: TokenKind): [] {
 // Cancel an unpaid invoice. Merchant only, and refused once anyone has paid:
 // cancelling out from under a payer who already settled would be theft.
 export circuit cancel_invoice(kind: InvoiceKind, token: TokenKind): [] {
-  const commitment = disclose(own_commitment(kind, token));
+  const commitment = disclose(commitment_for_owner(kind, token, owner_tag(owner_secret())));
 
   assert(invoices.member(commitment), "unknown invoice");
   const state = invoices.lookup(commitment);
   assert(state.status == InvoiceStatus.OPEN, "invoice is not open");
   assert(state.contributions == 0, "invoice has contributions");
-  assert(owner_tag(owner_secret()) == state.owner, "not the invoice owner");
 
   invoices.insert(commitment, disclose(InvoiceState {
     status: InvoiceStatus.CANCELLED,
@@ -593,7 +627,7 @@ export circuit settle_invoice_converted(
 
   // The commitment is over the invoice's own asset, not the one being paid:
   // conversion must not let a payer settle a different invoice.
-  const commitment = disclose(own_commitment(kind, invoice_token));
+  const commitment = disclose(link_commitment(kind, invoice_token));
   const index = disclose(pinned_index(kind, payment_index()));
   const receipt = record_settlement(commitment, kind, payer_key(), payer_refund().bytes, index);
 
@@ -644,11 +678,9 @@ export circuit refund_payment(
   token: TokenKind,
   coin: ShieldedCoinInfo
 ): Bytes<32> {
-  const commitment = disclose(own_commitment(kind, token));
+  const commitment = disclose(commitment_for_owner(kind, token, owner_tag(owner_secret())));
 
   assert(invoices.member(commitment), "unknown invoice");
-  const state = invoices.lookup(commitment);
-  assert(owner_tag(owner_secret()) == state.owner, "not the invoice owner");
 
   const index = disclose(pinned_index(kind, payment_index()));
   const refund_to = payer_refund();
@@ -687,6 +719,7 @@ export circuit refund_payment(
 // real path with an invented amount; deriving the receipt means an attested
 // amount must hash to a receipt that is actually on the tree.
 witness attested_amounts(): Vector<4, Uint<64>>;
+witness attested_owners(): Vector<4, Bytes<32>>;
 witness attested_salts(): Vector<4, Bytes<32>>;
 witness attested_payouts(): Vector<4, Bytes<32>>;
 witness attested_payers(): Vector<4, Bytes<32>>;
@@ -701,13 +734,14 @@ circuit verify_attested_payment(
   token: TokenKind,
   amount: Uint<64>,
   salt: Bytes<32>,
+  owner: Bytes<32>,
   payout: Bytes<32>,
   payer: Bytes<32>,
   refund_to: Bytes<32>,
   index: Uint<32>,
   path: MerkleTreePath<24, Bytes<32>>
 ): Bytes<32> {
-  const commitment = invoice_commitment(merchant_key(), payout, amount, kind, token, salt);
+  const commitment = invoice_commitment(merchant_key(), payout, amount, kind, token, salt, owner);
   const receipt = receipt_digest(commitment, payer, refund_to, index);
 
   // Bind the path to this receipt, or it could belong to any other payment and
@@ -737,16 +771,17 @@ export circuit attest_revenue_at_least(
 ): Bytes<32> {
   const amounts = attested_amounts();
   const salts = attested_salts();
+  const owners = attested_owners();
   const payouts = attested_payouts();
   const payers = attested_payers();
   const refunds = attested_refunds();
   const indices = attested_indices();
   const paths = attested_paths();
 
-  const r0 = verify_attested_payment(kind, token, amounts[0], salts[0], payouts[0], payers[0], refunds[0], indices[0], paths[0]);
-  const r1 = verify_attested_payment(kind, token, amounts[1], salts[1], payouts[1], payers[1], refunds[1], indices[1], paths[1]);
-  const r2 = verify_attested_payment(kind, token, amounts[2], salts[2], payouts[2], payers[2], refunds[2], indices[2], paths[2]);
-  const r3 = verify_attested_payment(kind, token, amounts[3], salts[3], payouts[3], payers[3], refunds[3], indices[3], paths[3]);
+  const r0 = verify_attested_payment(kind, token, amounts[0], salts[0], owners[0], payouts[0], payers[0], refunds[0], indices[0], paths[0]);
+  const r1 = verify_attested_payment(kind, token, amounts[1], salts[1], owners[1], payouts[1], payers[1], refunds[1], indices[1], paths[1]);
+  const r2 = verify_attested_payment(kind, token, amounts[2], salts[2], owners[2], payouts[2], payers[2], refunds[2], indices[2], paths[2]);
+  const r3 = verify_attested_payment(kind, token, amounts[3], salts[3], owners[3], payouts[3], payers[3], refunds[3], indices[3], paths[3]);
 
   // Distinct payments only, or one payment could be counted four times.
   assert(r0 != r1 && r0 != r2 && r0 != r3 && r1 != r2 && r1 != r3 && r2 != r3,
@@ -792,6 +827,7 @@ export circuit attestation_exists(digest: Bytes<32>): Boolean {
 
 witness batch_amounts(): Vector<4, Uint<64>>;
 witness batch_salts(): Vector<4, Bytes<32>>;
+witness batch_owners(): Vector<4, Bytes<32>>;
 witness batch_merchants(): Vector<4, Bytes<32>>;
 witness batch_payouts(): Vector<4, ZswapCoinPublicKey>;
 witness batch_indices(): Vector<4, Uint<32>>;
@@ -804,12 +840,13 @@ circuit settle_one(
   payout: ZswapCoinPublicKey,
   amount: Uint<64>,
   salt: Bytes<32>,
+  owner: Bytes<32>,
   index: Uint<32>,
   payer: Bytes<32>,
   refund_to: Bytes<32>,
   coin: ShieldedCoinInfo
 ): Bytes<32> {
-  const commitment = disclose(invoice_commitment(merchant, payout.bytes, amount, kind, token, salt));
+  const commitment = disclose(invoice_commitment(merchant, payout.bytes, amount, kind, token, salt, owner));
   const receipt = record_settlement(commitment, kind, payer, refund_to, disclose(pinned_index(kind, index)));
   check_coin(coin, amount, token);
   forward(coin, payout);
@@ -823,16 +860,17 @@ export circuit settle_batch(
 ): Vector<4, Bytes<32>> {
   const amounts = batch_amounts();
   const salts = batch_salts();
+  const owners = batch_owners();
   const merchants = batch_merchants();
   const payouts = batch_payouts();
   const indices = batch_indices();
   const payer = payer_key();
   const refund_to = payer_refund().bytes;
 
-  const r0 = settle_one(kind, token, merchants[0], payouts[0], amounts[0], salts[0], indices[0], payer, refund_to, coins[0]);
-  const r1 = settle_one(kind, token, merchants[1], payouts[1], amounts[1], salts[1], indices[1], payer, refund_to, coins[1]);
-  const r2 = settle_one(kind, token, merchants[2], payouts[2], amounts[2], salts[2], indices[2], payer, refund_to, coins[2]);
-  const r3 = settle_one(kind, token, merchants[3], payouts[3], amounts[3], salts[3], indices[3], payer, refund_to, coins[3]);
+  const r0 = settle_one(kind, token, merchants[0], payouts[0], amounts[0], salts[0], owners[0], indices[0], payer, refund_to, coins[0]);
+  const r1 = settle_one(kind, token, merchants[1], payouts[1], amounts[1], salts[1], owners[1], indices[1], payer, refund_to, coins[1]);
+  const r2 = settle_one(kind, token, merchants[2], payouts[2], amounts[2], salts[2], owners[2], indices[2], payer, refund_to, coins[2]);
+  const r3 = settle_one(kind, token, merchants[3], payouts[3], amounts[3], salts[3], owners[3], indices[3], payer, refund_to, coins[3]);
 
   return [r0, r1, r2, r3];
 }

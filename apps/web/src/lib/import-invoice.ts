@@ -8,7 +8,7 @@
 // A file edited by hand, or mixed from two invoices, is refused rather than
 // published as an invoice nobody's link points to.
 
-import { invoiceCommitmentOf, type InvoiceTerms, KinkoPay } from "@kinko/kinko-pay";
+import { invoiceCommitmentOf, type InvoiceTerms, KinkoPay, ownerTagOf } from "@kinko/kinko-pay";
 
 import { fromHex, toHex } from "./format.ts";
 import { parsePaymentLink } from "./pay.ts";
@@ -93,6 +93,7 @@ export function parseInvoiceFile(text: string): ImportedInvoice {
   if (typeof expiresAt !== "number" || !Number.isInteger(expiresAt) || expiresAt < 0)
     throw new InvoiceFileError("The file's expiry is not a whole number of seconds.");
 
+  const ownerSecret = hex32(r, "ownerSecret");
   const terms: InvoiceTerms = {
     merchantKey: hex32(r, "merchantKey"),
     payout: hex32(r, "payoutKey"),
@@ -100,9 +101,11 @@ export function parseInvoiceFile(text: string): ImportedInvoice {
     kind: kind.kind,
     token,
     salt: hex32(r, "salt"),
+    // The tag is the hash of the owner secret the file holds, so a file that is not its own
+    // owner's cannot reproduce the commitment it names.
+    owner: ownerTagOf(ownerSecret),
     expiresAt: BigInt(expiresAt),
   };
-  const ownerSecret = hex32(r, "ownerSecret");
   const commitment = toHex(invoiceCommitmentOf(terms));
   if (commitment !== field(r, "commitment").replace(/^0x/i, "").toLowerCase())
     throw new InvoiceFileError(

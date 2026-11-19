@@ -33,8 +33,10 @@ describe("authority over an invoice", () => {
   it("a payer who holds the full payment link cannot cancel the invoice", async () => {
     const { h, commitment } = await openInvoice();
     h.as({ payerKey: bytes32(0x99), ownerSecret: NOT_OWNER });
+    // The commitment is bound to the owner tag, so without the owner secret a caller cannot even
+    // reproduce the invoice's commitment: it is unknown to them, not merely forbidden.
     await expect(h.call("cancel_invoice", InvoiceKind.STANDARD, TokenKind.NATIVE)).rejects.toThrow(
-      "not the invoice owner",
+      "unknown invoice",
     );
     expect(ledgerOf(h).invoices.lookup(commitment).status).toBe(InvoiceStatus.OPEN);
   });
@@ -43,7 +45,7 @@ describe("authority over an invoice", () => {
     const { h, commitment } = await openInvoice(InvoiceKind.MULTIPAY);
     h.as({ ownerSecret: NOT_OWNER });
     await expect(h.call("close_invoice", InvoiceKind.MULTIPAY, TokenKind.NATIVE)).rejects.toThrow(
-      "not the invoice owner",
+      "unknown invoice",
     );
     expect(ledgerOf(h).invoices.lookup(commitment).status).toBe(InvoiceStatus.OPEN);
   });

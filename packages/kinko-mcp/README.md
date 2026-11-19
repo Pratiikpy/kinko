@@ -35,7 +35,7 @@ The settings are the ones the CLI and the SDK use, and are also read from `~/.co
 
 | Tool | What it does |
 |---|---|
-| `kinko_create_invoice` | Builds an invoice on this machine and registers a hosted checkout for it. Returns the link for the merchant; give it to the payer only after the invoice is published on chain, or someone who sees it first can publish it and own it. |
+| `kinko_create_invoice` | Builds an invoice on this machine and registers a hosted checkout for it. Returns the link to give the payer; the invoice must still be published on chain with the merchant's wallet before it can be paid. |
 | `kinko_create_draft` | Starts a checkout whose invoice the merchant's wallet creates in the web app. Returns the address to open; the amount is entered there. |
 | `kinko_invoice_status` | Reads an invoice from the backend and the chain, by session id or commitment. |
 | `kinko_list_invoices` | Lists recent invoices, optionally by status. |

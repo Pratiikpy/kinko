@@ -67,15 +67,20 @@ export default function Developer() {
           <h2 id="invoice">Create a payment link</h2>
           <p>
             Draw fresh secrets, call <code>create_invoice</code> with them in private state, and put
-            the terms in a link fragment.
+            the terms in a link fragment. The terms carry the public tag of your owner secret, which
+            is part of the commitment: anyone who sees the link can pay it, but only you can publish
+            the invoice it names.
           </p>
-          <Code>{`import { encodePaymentLink, invoiceCommitmentOf, KinkoPay, newInvoiceSecrets } from "@kinko/kinko-pay";
+          <Code>{`import {
+  encodePaymentLink, invoiceCommitmentOf, KinkoPay, newInvoiceSecrets, ownerTagOf,
+} from "@kinko/kinko-pay";
 
 const { salt, ownerSecret } = newInvoiceSecrets();   // ownerSecret never leaves you
 const terms = {
   merchantKey, payout: myCoinPublicKey, amount: 1_250_000_000n,   // $1,250.00
   kind: KinkoPay.InvoiceKind.STANDARD, token: KinkoPay.TokenKind.KUSD,
   salt, expiresAt: 0n,
+  owner: ownerTagOf(ownerSecret),   // public: it is in the commitment, so only you can publish this invoice
 };
 // callTx.create_invoice(kind, token, expiresAt) with terms + ownerSecret as private state
 const commitment = invoiceCommitmentOf(terms);       // what the ledger keys it by

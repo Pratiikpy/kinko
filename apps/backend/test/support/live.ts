@@ -6,7 +6,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { fromHex, generateOracleKeypair, KinkoPay } from "@kinko/kinko-pay";
+import { fromHex, generateOracleKeypair, KinkoPay, ownerTagOf } from "@kinko/kinko-pay";
 import { Asset, type Invoice } from "@kinko/node";
 
 import { createApp } from "../../src/app.ts";
@@ -116,6 +116,7 @@ export const asTestInvoice = (invoice: Invoice): TestInvoice => ({
     kind: KIND[invoice.kind] ?? KinkoPay.InvoiceKind.STANDARD,
     token: invoice.asset === Asset.KUSD ? KinkoPay.TokenKind.KUSD : KinkoPay.TokenKind.NATIVE,
     salt: fromHex(invoice.salt),
+    owner: ownerTagOf(fromHex(invoice.ownerSecret)),
     expiresAt: BigInt(invoice.expiresAt),
   },
 });

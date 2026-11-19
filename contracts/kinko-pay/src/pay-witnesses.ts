@@ -37,9 +37,12 @@ export interface PayPrivateState {
   readonly ownerSecret: Uint8Array;
   /** Amount actually handed over when settling in the other asset. */
   readonly convertedAmount: bigint;
+  /** The invoice's public owner tag, as its payment link carries it. A payer's copy; never a secret. */
+  readonly invoiceOwner: Uint8Array;
   /** Evidence backing a revenue attestation. Receipts are derived from it, never given. */
   readonly attestedAmounts: readonly bigint[];
   readonly attestedSalts: readonly Uint8Array[];
+  readonly attestedOwners: readonly Uint8Array[];
   readonly attestedPayouts: readonly Uint8Array[];
   readonly attestedPayers: readonly Uint8Array[];
   readonly attestedRefunds: readonly Uint8Array[];
@@ -48,6 +51,7 @@ export interface PayPrivateState {
   /** Four invoices paid under one proof. */
   readonly batchAmounts: readonly bigint[];
   readonly batchSalts: readonly Uint8Array[];
+  readonly batchOwners: readonly Uint8Array[];
   readonly batchMerchants: readonly Uint8Array[];
   readonly batchPayouts: readonly CoinPublicKey[];
   readonly batchIndices: readonly bigint[];
@@ -72,8 +76,10 @@ export const emptyPayPrivateState = (): PayPrivateState => ({
   paymentIndex: 0n,
   ownerSecret: ZERO32,
   convertedAmount: 0n,
+  invoiceOwner: ZERO32,
   attestedAmounts: [],
   attestedSalts: [],
+  attestedOwners: [],
   attestedPayouts: [],
   attestedPayers: [],
   attestedRefunds: [],
@@ -81,6 +87,7 @@ export const emptyPayPrivateState = (): PayPrivateState => ({
   attestedPaths: [],
   batchAmounts: [],
   batchSalts: [],
+  batchOwners: [],
   batchMerchants: [],
   batchPayouts: [],
   batchIndices: [],
@@ -141,8 +148,10 @@ export const payWitnesses: Witnesses<PayPrivateState> = {
   payment_index: read("paymentIndex"),
   owner_secret: read("ownerSecret"),
   converted_amount: read("convertedAmount"),
+  invoice_owner: read("invoiceOwner"),
   attested_amounts: readVector("attestedAmounts"),
   attested_salts: readVector("attestedSalts"),
+  attested_owners: readVector("attestedOwners"),
   attested_payouts: readVector("attestedPayouts"),
   attested_payers: readVector("attestedPayers"),
   attested_refunds: readVector("attestedRefunds"),
@@ -150,6 +159,7 @@ export const payWitnesses: Witnesses<PayPrivateState> = {
   attested_paths: readVector("attestedPaths"),
   batch_amounts: readVector("batchAmounts"),
   batch_salts: readVector("batchSalts"),
+  batch_owners: readVector("batchOwners"),
   batch_merchants: readVector("batchMerchants"),
   batch_payouts: readVector("batchPayouts"),
   batch_indices: readVector("batchIndices"),

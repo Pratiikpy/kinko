@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { generateOracleKeypair, signQuote } from "../src/index.ts";
+import { generateOracleKeypair, ownerTagOf, signQuote } from "../src/index.ts";
 import { bytes32, found, hex, T0 } from "./harness.ts";
 import {
   base,
@@ -126,6 +126,7 @@ describe("what stays private", () => {
       salt: SALT,
       batchAmounts: [SECRET_AMOUNT, SECRET_AMOUNT, SECRET_AMOUNT, SECRET_AMOUNT],
       batchSalts: salts,
+      batchOwners: [ownerTagOf(OWNER), ownerTagOf(OWNER), ownerTagOf(OWNER), ownerTagOf(OWNER)],
       batchMerchants: [MERCHANT, MERCHANT, MERCHANT, MERCHANT],
       batchPayouts: [PAYOUT, PAYOUT, PAYOUT, PAYOUT].map((bytes) => ({ bytes })),
       batchIndices: [0n, 0n, 0n, 0n],

@@ -1,6 +1,6 @@
 import "../polyfills.ts";
 
-import { invoiceCommitmentOf, KinkoPay, newInvoiceSecrets } from "@kinko/kinko-pay";
+import { invoiceCommitmentOf, KinkoPay, newInvoiceSecrets, ownerTagOf } from "@kinko/kinko-pay";
 import { describe, expect, it } from "vitest";
 
 import { toHex } from "./format.ts";
@@ -25,6 +25,7 @@ function file(overrides: Record<string, unknown> = {}) {
     kind: KinkoPay.InvoiceKind.MULTIPAY,
     token: KinkoPay.TokenKind.KUSD,
     salt,
+    owner: ownerTagOf(ownerSecret),
     expiresAt: 1_900_000_000n,
   };
   const body = {

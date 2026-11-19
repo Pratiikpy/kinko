@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { attestationDigestOf, type PayPrivateState } from "../src/index.ts";
+import { attestationDigestOf, ownerTagOf, type PayPrivateState } from "../src/index.ts";
 import { bytes32, first, found, hex, nth } from "./harness.ts";
 import {
   base,
@@ -18,6 +18,7 @@ import {
   InvoiceKind,
   ledgerOf,
   MERCHANT,
+  OWNER,
   type PayHarness,
   PAYOUT,
   SALT,
@@ -59,6 +60,7 @@ const truth = (
   merchantKey: MERCHANT,
   attestedAmounts: [AMOUNT, AMOUNT, AMOUNT, AMOUNT],
   attestedSalts: [SALT, SALT, SALT, SALT],
+  attestedOwners: [ownerTagOf(OWNER), ownerTagOf(OWNER), ownerTagOf(OWNER), ownerTagOf(OWNER)],
   attestedPayouts: [PAYOUT, PAYOUT, PAYOUT, PAYOUT],
   attestedPayers: PAYERS,
   attestedRefunds: REFUNDS,

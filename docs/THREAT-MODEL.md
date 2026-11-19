@@ -85,8 +85,8 @@ Not defended, by design: a gift card is cash, and whoever holds its link can spe
 
 ## Known limits that need a contract change
 
-These were found by an independent review and are not fixed in the deployed contracts; the app guards against what it can.
+These were found by independent reviews; the first is fixed in the deployed contract and the others are not.
 
-- **An invoice's link can be used before the merchant publishes it.** `create_invoice` does not bind the expiry or the owner into the commitment, so whoever publishes a commitment first owns it. A merchant who publishes before sharing the link is safe. The app refuses to file an invoice that is already on chain under another owner or expiry, and the SDK and MCP documentation and the MCP tool's own description now say to publish before the link goes to anyone. The real fix binds the owner and expiry into the commitment, which changes the link format and the contract and so needs a redeploy.
+- **(Fixed in the pay contract deployed 2026-11-19.) An invoice's link could be used before the merchant published it.** The commitment now includes the owner tag, so only the holder of the owner secret can publish the invoice a link names; someone who creates the same terms with their own owner secret gets a different commitment that no link points at (`contracts/kinko-pay/test/kinko-pay.test.ts`, "invoice squatting"). Links and receipt proofs made for the earlier contract carry no owner tag and are refused. Publishing before sharing the link is still the right habit, but it is no longer what keeps the invoice yours.
 - **An invoice priced in NIGHT and paid in KUSD cannot be refunded from the app.** The contract refunds in the invoice's own asset and amount, and the app pays NIGHT invoices only by converting KUSD, so the refund it builds (a KUSD coin) is refused. The app says so instead of offering a refund that would fail.
 - **Two identical deposits started before the first is swept** get the same request identity. Start the next deposit after the first has moved on.

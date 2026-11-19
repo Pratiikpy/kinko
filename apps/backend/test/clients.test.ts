@@ -340,7 +340,7 @@ describe("@kinko/cli against the real backend", () => {
 
     // Publish it from the private secrets file, as a wallet tool would.
     const secrets = JSON.parse(readFileSync(result.secretsFile, "utf8")) as Record<string, string>;
-    const { fromHex } = await import("@kinko/kinko-pay");
+    const { fromHex, ownerTagOf } = await import("@kinko/kinko-pay");
     const { KinkoPay } = await import("@kinko/kinko-pay");
     await live.sim.create({
       commitment: result.invoice.commitment,
@@ -352,6 +352,7 @@ describe("@kinko/cli against the real backend", () => {
         kind: KinkoPay.InvoiceKind.STANDARD,
         token: KinkoPay.TokenKind.KUSD,
         salt: fromHex(secrets.salt ?? ""),
+        owner: ownerTagOf(fromHex(secrets.ownerSecret ?? "")),
         expiresAt: 0n,
       },
     });
@@ -370,6 +371,7 @@ describe("@kinko/cli against the real backend", () => {
         kind: KinkoPay.InvoiceKind.STANDARD,
         token: KinkoPay.TokenKind.KUSD,
         salt: fromHex(secrets.salt ?? ""),
+        owner: ownerTagOf(fromHex(secrets.ownerSecret ?? "")),
         expiresAt: 0n,
       },
     });
@@ -437,7 +439,7 @@ describe("@kinko/mcp against the real backend", () => {
       const secrets = JSON.parse(
         readFileSync(join(home, "invoices", `${commitment}.json`), "utf8"),
       ) as Record<string, string>;
-      const { fromHex, KinkoPay } = await import("@kinko/kinko-pay");
+      const { fromHex, KinkoPay, ownerTagOf } = await import("@kinko/kinko-pay");
       const invoice = {
         commitment,
         ownerSecret: fromHex(secrets.ownerSecret ?? ""),
@@ -448,6 +450,7 @@ describe("@kinko/mcp against the real backend", () => {
           kind: KinkoPay.InvoiceKind.STANDARD,
           token: KinkoPay.TokenKind.KUSD,
           salt: fromHex(secrets.salt ?? ""),
+          owner: ownerTagOf(fromHex(secrets.ownerSecret ?? "")),
           expiresAt: BigInt(secrets.expiresAt ?? "0"),
         },
       };

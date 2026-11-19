@@ -29,6 +29,11 @@ export interface InvoiceTerms {
   readonly kind: InvoiceKind;
   readonly token: TokenKind;
   readonly salt: Uint8Array;
+  /**
+   * The invoice's public owner tag, the hash of the merchant's owner secret. It is part of the
+   * commitment, so only the holder of that secret can create the invoice the link names.
+   */
+  readonly owner: Uint8Array;
   /** Block time in seconds after which settlement is refused; 0 never expires. */
   readonly expiresAt: bigint;
 }
@@ -74,6 +79,7 @@ export const assertInvoiceTerms = (terms: InvoiceTerms): void => {
   checkBytes32(terms.merchantKey, "merchantKey");
   checkBytes32(terms.payout, "payout");
   checkBytes32(terms.salt, "salt");
+  checkBytes32(terms.owner, "owner");
   checkUint(terms.amount, UINT64_MAX, "amount");
   checkUint(terms.expiresAt, UINT64_MAX, "expiresAt");
   // Enum values arrive from links and forms as plain numbers, so membership is
@@ -126,6 +132,7 @@ export const invoiceCommitmentOf = (terms: InvoiceTerms): Uint8Array => {
     terms.kind,
     terms.token,
     terms.salt,
+    terms.owner,
   );
 };
 
@@ -229,7 +236,7 @@ export const receiptSetDigestOf = (receipts: readonly Uint8Array[]): Uint8Array 
 // ---------------------------------------------------------------------------
 
 interface PaymentLinkPayload {
-  v: 1 | 2;
+  v: 1 | 2 | 3;
   a: string;
   m: string;
   p: string;
@@ -237,8 +244,10 @@ interface PaymentLinkPayload {
   k: number;
   t: number;
   s: string;
+  /** The invoice's public owner tag (version 3). */
+  o?: string;
   e: string;
-  /** The payout key's encryption public key (version 2). */
+  /** The payout key's encryption public key (versions 2 and 3). */
   x?: string;
 }
 
@@ -276,7 +285,7 @@ export const encodePaymentLink = (
   fromHex(contractAddress);
   checkBytes32(payoutEncryptionKey, "payoutEncryptionKey");
   const payload: PaymentLinkPayload = {
-    v: 2,
+    v: 3,
     a: contractAddress.replace(/^0x/i, "").toLowerCase(),
     m: toHex(terms.merchantKey),
     p: toHex(terms.payout),
@@ -284,6 +293,7 @@ export const encodePaymentLink = (
     k: terms.kind,
     t: terms.token,
     s: toHex(terms.salt),
+    o: toHex(terms.owner),
     e: terms.expiresAt.toString(10),
     x: toHex(payoutEncryptionKey),
   };
@@ -291,15 +301,17 @@ export const encodePaymentLink = (
 };
 
 /**
- * Decode a payment link produced by {@link encodePaymentLink}, or an earlier
- * version 1 link, which carries no payout encryption key.
+ * Decode a payment link produced by {@link encodePaymentLink}.
  *
  * @param link - The payload, or a full link carrying it in its fragment.
- * @returns The terms, contract address and payout encryption key, or `undefined` when malformed.
+ * @returns The terms, contract address and payout encryption key, or `undefined` when malformed or
+ *   made for an earlier contract.
  */
 export const decodePaymentLink = (link: string): DecodedPaymentLink | undefined => {
   const raw = decodeLinkPayload(link) as Partial<PaymentLinkPayload> | undefined;
-  if (raw?.v !== 1 && raw?.v !== 2) return undefined;
+  // Earlier links (versions 1 and 2) carry no owner tag, so they name commitments the contract no
+  // longer recognises and cannot be paid; they are refused rather than half read.
+  if (raw?.v !== 3) return undefined;
   try {
     if (!/^\d+$/.test(raw.n ?? "") || !/^\d+$/.test(raw.e ?? "")) return undefined;
     const terms: InvoiceTerms = {
@@ -309,11 +321,11 @@ export const decodePaymentLink = (link: string): DecodedPaymentLink | undefined 
       kind: raw.k as InvoiceKind,
       token: raw.t as TokenKind,
       salt: fromHex(raw.s ?? ""),
+      owner: fromHex(raw.o ?? ""),
       expiresAt: BigInt(raw.e ?? ""),
     };
     assertInvoiceTerms(terms);
     fromHex(raw.a ?? "");
-    if (raw.v === 1) return { terms, contractAddress: raw.a ?? "" };
     const payoutEncryptionKey = fromHex(raw.x ?? "");
     checkBytes32(payoutEncryptionKey, "payoutEncryptionKey");
     return { terms, contractAddress: raw.a ?? "", payoutEncryptionKey };

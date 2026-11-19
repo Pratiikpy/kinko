@@ -1,6 +1,12 @@
 import "../polyfills.ts";
 
-import { invoiceCommitmentOf, KinkoPay, newInvoiceSecrets, receiptOf } from "@kinko/kinko-pay";
+import {
+  invoiceCommitmentOf,
+  KinkoPay,
+  newInvoiceSecrets,
+  ownerTagOf,
+  receiptOf,
+} from "@kinko/kinko-pay";
 import { describe, expect, it } from "vitest";
 
 import { toHex } from "./format.ts";
@@ -19,6 +25,8 @@ import { claimedBy, decodeReceiptProof, encodeReceiptProof } from "./receipts.ts
 const PAY = "5a".repeat(32);
 const ORIGIN = "https://pay.test";
 const ENC = new Uint8Array(32).fill(9);
+/** The owner secret behind the invoices these tests build; only its public tag is in the terms. */
+const OWNER_SECRET = new Uint8Array(32).fill(0x77);
 
 const terms = () => {
   const { salt } = newInvoiceSecrets();
@@ -29,6 +37,7 @@ const terms = () => {
     kind: KinkoPay.InvoiceKind.MULTIPAY,
     token: KinkoPay.TokenKind.KUSD,
     salt,
+    owner: ownerTagOf(OWNER_SECRET),
     expiresAt: 1_800_000_000n,
   };
 };
@@ -83,6 +92,7 @@ describe("invoice records", () => {
       amount: t.amount.toString(),
       kind: KIND_NAME(t.kind),
       salt: toHex(t.salt),
+      ownerSecret: toHex(OWNER_SECRET),
       expiresAt: t.expiresAt.toString(),
     };
     expect(toHex(invoiceCommitmentOf(termsOfRecord(record)))).toBe(toHex(invoiceCommitmentOf(t)));

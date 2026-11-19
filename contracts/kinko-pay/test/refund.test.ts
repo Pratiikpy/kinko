@@ -90,9 +90,10 @@ describe("refund_payment", () => {
   it("REFUSES a payer who holds the payment link and no owner secret", async () => {
     const { h } = await paidInvoice();
     h.as({ ownerSecret: bytes32(0xef) });
+    // Bound to the owner tag, the commitment is unknown to anyone without the owner secret.
     await expect(
       h.call("refund_payment", InvoiceKind.STANDARD, TokenKind.NATIVE, coin(BIG)),
-    ).rejects.toThrow("not the invoice owner");
+    ).rejects.toThrow("unknown invoice");
     expect(ledgerOf(h).refunded.size()).toBe(0n);
   });
 

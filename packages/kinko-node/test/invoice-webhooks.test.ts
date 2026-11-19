@@ -1,4 +1,11 @@
-import { decodePaymentLink, fromHex, invoiceCommitmentOf, KinkoPay, toHex } from "@kinko/kinko-pay";
+import {
+  decodePaymentLink,
+  fromHex,
+  invoiceCommitmentOf,
+  KinkoPay,
+  ownerTagOf,
+  toHex,
+} from "@kinko/kinko-pay";
 import { describe, expect, it } from "vitest";
 
 import { formatAmount, parseAmount } from "../src/amount.ts";
@@ -118,6 +125,7 @@ describe("buildInvoice", () => {
   it("changes the commitment with each term", () => {
     const base = buildInvoice(KEYS, { amount: 5n }, CONTEXT);
     const salt = fromHex(base.salt);
+    const owner = ownerTagOf(fromHex(base.ownerSecret));
     const commit = (over: Partial<Parameters<typeof invoiceCommitmentOf>[0]>) =>
       toHex(
         invoiceCommitmentOf({
@@ -127,6 +135,7 @@ describe("buildInvoice", () => {
           kind: KinkoPay.InvoiceKind.STANDARD,
           token: KinkoPay.TokenKind.KUSD,
           salt,
+          owner,
           expiresAt: 0n,
           ...over,
         }),
@@ -136,6 +145,8 @@ describe("buildInvoice", () => {
     expect(commit({ token: KinkoPay.TokenKind.NATIVE })).not.toBe(base.commitment);
     expect(commit({ kind: KinkoPay.InvoiceKind.MULTIPAY })).not.toBe(base.commitment);
     expect(commit({ merchantKey: fromHex("22".repeat(32)) })).not.toBe(base.commitment);
+    // Another owner's tag names another invoice: this is what stops a link-holder squatting it.
+    expect(commit({ owner: ownerTagOf(fromHex("33".repeat(32))) })).not.toBe(base.commitment);
   });
 
   it("defaults to a standard KUSD invoice that never expires", () => {

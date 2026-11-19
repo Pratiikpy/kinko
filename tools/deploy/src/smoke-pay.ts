@@ -19,6 +19,7 @@ import {
   KinkoPay,
   newInvoiceSecrets,
   newPaymentSecrets,
+  ownerTagOf,
   type PayPrivateState,
   toHex,
 } from "@kinko/kinko-pay";
@@ -133,6 +134,7 @@ try {
     kind: KinkoPay.InvoiceKind.STANDARD,
     token: KinkoPay.TokenKind.KUSD,
     salt,
+    owner: ownerTagOf(ownerSecret),
     expiresAt: 0n,
   };
   const base: PayPrivateState = {
@@ -140,6 +142,8 @@ try {
     merchantKey: terms.merchantKey,
     merchantPayout: { bytes: terms.payout },
     salt,
+    // What the payer's link carries: the invoice's public owner tag.
+    invoiceOwner: terms.owner,
     amount: AMOUNT,
   };
 

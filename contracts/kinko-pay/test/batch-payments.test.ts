@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { PayPrivateState } from "../src/index.ts";
+import { ownerTagOf, type PayPrivateState } from "../src/index.ts";
 import { bytes32, hex, nth, paidTo } from "./harness.ts";
 import {
   base,
@@ -16,6 +16,7 @@ import {
   InvoiceKind,
   KUSD,
   ledgerOf,
+  OWNER,
   type PayHarness,
   TokenKind,
 } from "./pay-fixtures.ts";
@@ -25,9 +26,13 @@ const PAYOUTS = [bytes32(0xd1), bytes32(0xd2), bytes32(0xd3), bytes32(0xd4)] as 
 const SALTS = [bytes32(0xb1), bytes32(0xb2), bytes32(0xb3), bytes32(0xb4)] as const;
 const AMOUNTS = [1_000n, 2_000n, 3_000n, 4_000n] as const;
 
+/** Every invoice in these suites is created by the default party, so they share one owner tag. */
+const OWNER_TAG = ownerTagOf(OWNER);
+
 const batch = (over: Partial<PayPrivateState> = {}): Partial<PayPrivateState> => ({
   batchAmounts: AMOUNTS,
   batchSalts: SALTS,
+  batchOwners: [OWNER_TAG, OWNER_TAG, OWNER_TAG, OWNER_TAG],
   batchMerchants: MERCHANTS,
   batchPayouts: PAYOUTS.map((bytes) => ({ bytes })),
   batchIndices: [0n, 0n, 0n, 0n],

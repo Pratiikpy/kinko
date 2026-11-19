@@ -10,6 +10,7 @@ import {
   emptyPayPrivateState,
   KinkoPay,
   NATIVE_COLOR,
+  ownerTagOf,
   type PayPrivateState,
   payWitnesses,
 } from "../src/index.ts";
@@ -35,17 +36,22 @@ export const AMOUNT = 42_500n;
 export const NO_EXPIRY = 0n;
 
 /** The default party: a merchant whose payment link a payer also holds. */
-export const base = (over: Partial<PayPrivateState> = {}): PayPrivateState => ({
-  ...emptyPayPrivateState(),
-  merchantKey: MERCHANT,
-  merchantPayout: { bytes: PAYOUT },
-  salt: SALT,
-  amount: AMOUNT,
-  payerKey: PAYER,
-  payerRefund: { bytes: REFUND_TO },
-  ownerSecret: OWNER,
-  ...over,
-});
+export const base = (over: Partial<PayPrivateState> = {}): PayPrivateState => {
+  const ownerSecret = over.ownerSecret ?? OWNER;
+  return {
+    ...emptyPayPrivateState(),
+    merchantKey: MERCHANT,
+    merchantPayout: { bytes: PAYOUT },
+    salt: SALT,
+    amount: AMOUNT,
+    payerKey: PAYER,
+    payerRefund: { bytes: REFUND_TO },
+    ownerSecret,
+    // What the payer's link carries: the public tag of the owner secret behind the invoice.
+    invoiceOwner: ownerTagOf(ownerSecret),
+    ...over,
+  };
+};
 
 export type PayHarness = Harness<PayPrivateState, KinkoPay.Circuits<PayPrivateState>>;
 

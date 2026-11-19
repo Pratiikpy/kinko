@@ -17,6 +17,7 @@ import {
   newInvoiceSecrets,
   newPaymentSecrets,
   normaliseTag,
+  ownerTagOf,
   type PaymentSecrets,
   receiptOf,
   type ResolvedTag,
@@ -346,6 +347,7 @@ export async function createInvoice(p: InvoiceRequest): Promise<NewInvoice> {
     kind: KIND_OF[p.kind],
     token: KinkoPay.TokenKind.KUSD,
     salt,
+    owner: ownerTagOf(ownerSecret),
     expiresAt: p.expiresAt,
   };
   const { commitment, txId } = await publishInvoice({
@@ -448,6 +450,8 @@ export async function payInvoice(p: PaymentRequest): Promise<PaidInvoice> {
     merchantPayout: { bytes: p.terms.payout },
     salt: p.terms.salt,
     amount: p.terms.amount,
+    // The commitment is bound to the invoice's public owner tag, which the link carries.
+    invoiceOwner: p.terms.owner,
     payerKey: payment.payerKey,
     payerRefund: { bytes: payment.refundTo },
     paymentIndex: payment.index,
@@ -611,6 +615,8 @@ export interface StoredTerms {
   readonly kind: InvoiceKindName;
   readonly token?: "KUSD" | "NATIVE";
   readonly salt: string;
+  /** The invoice's owner secret, from which its public owner tag is derived. */
+  readonly ownerSecret: string;
   readonly expiresAt: string;
 }
 
@@ -627,6 +633,7 @@ export const termsOfRecord = (r: StoredTerms): InvoiceTerms => ({
   kind: KIND_OF[r.kind],
   token: r.token === "NATIVE" ? KinkoPay.TokenKind.NATIVE : KinkoPay.TokenKind.KUSD,
   salt: fromHex(r.salt),
+  owner: ownerTagOf(fromHex(r.ownerSecret)),
   expiresAt: BigInt(r.expiresAt),
 });
 

@@ -25,12 +25,12 @@ const checkout = await kinko.checkout.create({
   expiresInSeconds: 3600,
 });
 
-checkout.checkoutUrl; // give this to the payer once the invoice is published (see below): the hosted page, with the terms in its fragment
+checkout.checkoutUrl; // give this to the payer: the hosted page, with the terms in its fragment
 checkout.paymentLink; // or a direct payment link
 checkout.invoice; // the invoice, including its secrets: keep it, and publish it with your wallet
 ```
 
-An invoice built here exists only on your machine until a wallet publishes it. Publish it before the link leaves your hands: whoever publishes a commitment first owns the invoice, and the link carries everything needed to publish it, so a payer or anyone who sees the link early could take the invoice over and you could no longer cancel or refund it. Save it with `saveInvoiceSecrets()` (the CLI and the MCP server do this for you), then open the Kinko app's Invoices page and choose the file under "Publish an invoice made elsewhere". The app checks that the terms match the commitment before it signs.
+An invoice built here exists only on your machine until a wallet publishes it. The invoice's commitment includes your owner tag, so only you can publish the invoice a link names; publishing before the link leaves your hands is still the tidy order, but it is no longer what keeps the invoice yours. Save it with `saveInvoiceSecrets()` (the CLI and the MCP server do this for you), then open the Kinko app's Invoices page and choose the file under "Publish an invoice made elsewhere". The app checks that the terms match the commitment before it signs.
 
 `merchantKey` is your identity key (`kinko keygen` makes one) and `payoutAddress` is the shielded address of the wallet you are paid at (`mn_shield-addr_…`). It carries the key your payments are sent to and the key they are encrypted to. Both stay in your process.
 
