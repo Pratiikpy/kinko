@@ -42,7 +42,7 @@ const STOPS: Stop[] = [
   {
     id: "deposit",
     title: "Deposit USDC and watch both chains move",
-    what: "Add dollars: get your deposit address, send USDC and gas from the same wallet, start the deposit, then receive. Every relayed step appears in the stepper with who acts.",
+    what: "Add dollars: get your deposit address, send USDC and gas from the same wallet, start the deposit, then receive. Every relayed step appears in the stepper with who acts. On a test network you need free Sepolia test USDC (faucet.circle.com) and a little Sepolia ETH (the Google Cloud web3 faucet) first; the Add dollars page links both.",
     lookFor: [
       "The deposit address derived from your private identity",
       "Each relayer stage arriving in order",

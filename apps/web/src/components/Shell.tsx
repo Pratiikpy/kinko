@@ -5,6 +5,8 @@ import {
   BadgeCheck,
   BookOpen,
   Building2,
+  CircleAlert,
+  CircleHelp,
   CreditCard,
   FileText,
   Gift,
@@ -25,6 +27,7 @@ import { createPortal } from "react-dom";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { NETWORK_ID } from "../lib/config.ts";
+import { useDeployment } from "../state/deployment.tsx";
 import { useTheme } from "../state/theme.tsx";
 import { Wordmark } from "./Logo.tsx";
 import { cx } from "./ui.tsx";
@@ -355,6 +358,35 @@ export function AppLayout({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Whether the relayer answered its last health check, read from the same check the deposit and
+ * withdraw pages gate on rather than shown as a fixed green mark.
+ *
+ * @returns One line of footer status.
+ */
+function RelayerStatus() {
+  const { state, relayerUp } = useDeployment();
+  if (state.status === "loading") {
+    return (
+      <p className="flex items-center gap-2" role="status">
+        <CircleHelp aria-hidden className="h-4 w-4" /> Checking the relayer…
+      </p>
+    );
+  }
+  return (
+    <p className="flex items-center gap-2" role="status">
+      {relayerUp ? (
+        <BadgeCheck aria-hidden className="h-4 w-4 text-ok" />
+      ) : (
+        <CircleAlert aria-hidden className="h-4 w-4 text-warn" />
+      )}{" "}
+      {relayerUp
+        ? "Relayer answering"
+        : "Relayer not answering: deposits and withdrawals wait; payments are unaffected"}
+    </p>
+  );
+}
+
 export function Footer() {
   return (
     <footer className="border-t border-line">
@@ -399,9 +431,10 @@ export function Footer() {
         <div className="grid content-start gap-2 text-ink-2">
           <p className="font-semibold text-ink">Status</p>
           <p className="flex items-center gap-2">
-            <BadgeCheck aria-hidden className="h-4 w-4 text-ok" /> Network:{" "}
+            <BookOpen aria-hidden className="h-4 w-4" /> Network:{" "}
             <span className="font-mono text-xs">{NETWORK_ID}</span>
           </p>
+          <RelayerStatus />
           <p className="flex items-center gap-2">
             <BookOpen aria-hidden className="h-4 w-4" /> Experimental software
           </p>

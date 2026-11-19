@@ -270,7 +270,18 @@ function Funding({ record, deployment }: { record: VaultRequestRecord; deploymen
         <p className="mt-3 text-sm text-ink-3">
           {deployment.evmChainId === 1
             ? "Any wallet works: you can also send to this address from an exchange or another app. "
-            : "This build runs on Ethereum Sepolia, a test network. Send only Sepolia test USDC to this address, from a wallet connected to Sepolia. An exchange, or any other network, will not reach it and the USDC would be lost. Free test USDC and ETH come from faucets. "}
+            : "This build runs on Ethereum Sepolia, a test network. Send only Sepolia test USDC to this address, from a wallet connected to Sepolia. An exchange, or any other network, will not reach it and the USDC would be lost. "}
+          {deployment.evmChainId === 1 ? null : (
+            <>
+              Test funds are free:{" "}
+              <ExternalA href="https://faucet.circle.com/">Circle's faucet</ExternalA> gives Sepolia
+              USDC, and{" "}
+              <ExternalA href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia">
+                Google Cloud's faucet
+              </ExternalA>{" "}
+              gives the Sepolia ETH the sweep needs.{" "}
+            </>
+          )}
           This page checks the address every few seconds.
         </p>
         <StartDeposit record={record} deployment={deployment} ready={usdcOk && ethOk} />

@@ -162,40 +162,50 @@ function PublicView({ ledger }: { ledger: NonNullable<ReturnType<typeof useLedge
         {log.length === 0 ? (
           <p className="text-sm text-ink-3">Nothing has been logged yet.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-3">
-                  <th className="py-2 pr-3 font-medium">When</th>
-                  <th className="py-2 pr-3 font-medium">What</th>
-                  <th className="py-2 pr-3 font-medium">Case</th>
-                  <th className="py-2 pr-3 font-medium">Scope</th>
-                  <th className="py-2 font-medium">By</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {log.map((e, i) => (
-                  <tr key={`${String(e.at)}-${String(i)}`}>
-                    <td className="tabular py-2.5 pr-3 text-ink-2">
-                      {new Date(Number(e.at) * 1000).toLocaleString()}
-                    </td>
-                    <td className="py-2.5 pr-3 text-ink">{LOG_TEXT[e.kind]}</td>
-                    <td className="py-2.5 pr-3 font-mono text-xs text-ink-2">
-                      {e.caseId.every((b) => b === 0) ? "—" : shortHex(toHex(e.caseId), 6, 4)}
-                    </td>
-                    <td className="py-2.5 pr-3 font-mono text-xs text-ink-2">
-                      {e.scopeHash.every((b) => b === 0) ? "—" : shortHex(toHex(e.scopeHash), 6, 4)}
-                    </td>
-                    <td className="py-2.5 text-ink-2">
-                      {e.keyholder === 255n
-                        ? `Examiner ${shortHex(toHex(e.examinerId), 4, 4)}`
-                        : `Keyholder ${String(e.keyholder)}`}
-                    </td>
+          <>
+            <p className="mb-2 text-xs text-ink-3 md:hidden">Swipe sideways to see every column.</p>
+            <div
+              className="overflow-x-auto"
+              role="region"
+              aria-label="Disclosure log, scrolls sideways"
+              tabIndex={0}
+            >
+              <table className="w-full min-w-[34rem] text-sm">
+                <thead>
+                  <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-ink-3">
+                    <th className="py-2 pr-3 font-medium">When</th>
+                    <th className="py-2 pr-3 font-medium">What</th>
+                    <th className="py-2 pr-3 font-medium">Case</th>
+                    <th className="py-2 pr-3 font-medium">Scope</th>
+                    <th className="py-2 font-medium">By</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {log.map((e, i) => (
+                    <tr key={`${String(e.at)}-${String(i)}`}>
+                      <td className="tabular py-2.5 pr-3 text-ink-2">
+                        {new Date(Number(e.at) * 1000).toLocaleString()}
+                      </td>
+                      <td className="py-2.5 pr-3 text-ink">{LOG_TEXT[e.kind]}</td>
+                      <td className="py-2.5 pr-3 font-mono text-xs text-ink-2">
+                        {e.caseId.every((b) => b === 0) ? "—" : shortHex(toHex(e.caseId), 6, 4)}
+                      </td>
+                      <td className="py-2.5 pr-3 font-mono text-xs text-ink-2">
+                        {e.scopeHash.every((b) => b === 0)
+                          ? "—"
+                          : shortHex(toHex(e.scopeHash), 6, 4)}
+                      </td>
+                      <td className="py-2.5 text-ink-2">
+                        {e.keyholder === 255n
+                          ? `Examiner ${shortHex(toHex(e.examinerId), 4, 4)}`
+                          : `Keyholder ${String(e.keyholder)}`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </Card>
     </div>
