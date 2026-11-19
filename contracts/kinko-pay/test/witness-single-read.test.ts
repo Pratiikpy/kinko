@@ -1,16 +1,18 @@
-// Every witness is read at most once per circuit.
+// Every witness is read exactly once per circuit, for every circuit.
 //
 // A witness is a private input the prover answers each time the circuit asks for it, and nothing
 // ties two answers together. A value that fed the invoice commitment and was then read a second
 // time to check the coin could therefore differ between the two reads: a payer could settle an
 // invoice with a commitment built from the real amount and a coin checked against a different
-// one. The fix is to read each witness once and pass the value down; this suite counts the reads,
-// so a circuit that asks twice again fails here, not on chain.
+// one. The fix is to read each witness once and pass the value down. This suite counts the reads
+// for every exported circuit and asserts the exact table, so a circuit that asks twice, or stops
+// asking, fails here and not on chain. Attestation and batch are included: their helpers are
+// called four times, and a witness read inside one of them would be read four times.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { generateOracleKeypair, payWitnesses, signQuote } from "../src/index.ts";
-import { T0 } from "./harness.ts";
+import { generateOracleKeypair, ownerTagOf, payWitnesses, signQuote } from "../src/index.ts";
+import { bytes32, nth, T0 } from "./harness.ts";
 import {
   AMOUNT,
   base,
@@ -18,7 +20,12 @@ import {
   deployPay,
   InvoiceKind,
   KUSD,
+  ledgerOf,
+  MERCHANT,
   NATIVE,
+  OWNER,
+  PAYOUT,
+  SALT,
   TokenKind,
 } from "./pay-fixtures.ts";
 
@@ -41,84 +48,197 @@ afterAll(() => {
 });
 
 /** Run one circuit call and return how many times each witness was read during it. */
-const readsDuring = async (call: () => Promise<unknown>): Promise<Record<string, number>> => {
+const reads = async (call: () => Promise<unknown>): Promise<Record<string, number>> => {
   counts.clear();
   await call();
-  return Object.fromEntries(counts);
+  return Object.fromEntries([...counts.entries()].sort(([a], [b]) => a.localeCompare(b)));
 };
 
-const expectOnce = (reads: Record<string, number>): void => {
-  const twice = Object.entries(reads).filter(([, n]) => n > 1);
-  expect(twice, `read more than once: ${JSON.stringify(twice)}`).toEqual([]);
+/** What building an invoice's commitment from the owner's secret reads. */
+const FROM_OWNER = {
+  invoice_amount: 1,
+  invoice_salt: 1,
+  merchant_key: 1,
+  merchant_payout: 1,
+  owner_secret: 1,
 };
+/** What building it from a payment link reads: the public owner tag instead of the secret. */
+const FROM_LINK = {
+  invoice_amount: 1,
+  invoice_owner: 1,
+  invoice_salt: 1,
+  merchant_key: 1,
+  merchant_payout: 1,
+};
+const PAYER = { payer_key: 1, payer_refund: 1, payment_index: 1 };
 
-describe("witnesses are read once per circuit", () => {
-  it("create_invoice, close_invoice and cancel_invoice", async () => {
-    const h = await deployPay(base());
-    expectOnce(
-      await readsDuring(() => h.call("create_invoice", InvoiceKind.MULTIPAY, TokenKind.KUSD, 0n)),
-    );
-    expectOnce(
-      await readsDuring(() => h.call("close_invoice", InvoiceKind.MULTIPAY, TokenKind.KUSD)),
-    );
-    const standard = await deployPay(base());
-    await standard.call("create_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, 0n);
-    expectOnce(
-      await readsDuring(() =>
-        standard.call("cancel_invoice", InvoiceKind.STANDARD, TokenKind.KUSD),
-      ),
-    );
+const colourOf = (token: (typeof TokenKind)[keyof typeof TokenKind]) =>
+  token === TokenKind.KUSD ? KUSD : NATIVE;
+
+describe("each witness is read exactly once per circuit", () => {
+  it("create, settle, refund, close and cancel, for every kind and asset", async () => {
+    for (const kind of [InvoiceKind.STANDARD, InvoiceKind.MULTIPAY, InvoiceKind.DONATION]) {
+      for (const token of [TokenKind.NATIVE, TokenKind.KUSD]) {
+        const h = await deployPay(base());
+        expect(await reads(() => h.call("create_invoice", kind, token, T0 + 10_000n))).toEqual(
+          FROM_OWNER,
+        );
+        const paid = coin(AMOUNT, colourOf(token));
+        expect(await reads(() => h.call("settle_invoice", kind, token, paid))).toEqual({
+          ...FROM_LINK,
+          ...PAYER,
+        });
+        const refund = coin(AMOUNT, colourOf(token));
+        expect(await reads(() => h.call("refund_payment", kind, token, refund))).toEqual({
+          ...FROM_OWNER,
+          ...PAYER,
+        });
+        // A standard invoice closes on payment, so only the other kinds have a close to read.
+        const closed =
+          kind === InvoiceKind.STANDARD
+            ? undefined
+            : await reads(() => h.call("close_invoice", kind, token));
+        expect(closed).toEqual(kind === InvoiceKind.STANDARD ? undefined : FROM_OWNER);
+        const unpaid = await deployPay(base());
+        await unpaid.call("create_invoice", kind, token, 0n);
+        expect(await reads(() => unpaid.call("cancel_invoice", kind, token))).toEqual(FROM_OWNER);
+      }
+    }
   });
 
-  it("settle_invoice, whose amount and payout once fed the commitment and then the coin check", async () => {
-    const h = await deployPay(base());
-    await h.call("create_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, 0n);
-    const reads = await readsDuring(() =>
-      h.call("settle_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, coin(AMOUNT, KUSD)),
-    );
-    expectOnce(reads);
-    expect(reads.invoice_amount).toBe(1);
-    expect(reads.merchant_payout).toBe(1);
+  it("settle_invoice_converted, in both directions", async () => {
+    for (const [invoiceToken, paidToken] of [
+      [TokenKind.NATIVE, TokenKind.KUSD],
+      [TokenKind.KUSD, TokenKind.NATIVE],
+    ] as const) {
+      const oracle = generateOracleKeypair();
+      const converted = 91_300n;
+      const h = await deployPay(base({ convertedAmount: converted }), oracle.publicKey);
+      await h.call("create_invoice", InvoiceKind.MULTIPAY, invoiceToken, 0n);
+      const quote = {
+        baseAmount: AMOUNT,
+        convertedAmount: converted,
+        fromToken: invoiceToken,
+        toToken: paidToken,
+        expiresAt: T0 + 3_600n,
+      };
+      const result = await reads(() =>
+        h.call(
+          "settle_invoice_converted",
+          InvoiceKind.MULTIPAY,
+          invoiceToken,
+          paidToken,
+          coin(converted, colourOf(paidToken)),
+          quote.expiresAt,
+          signQuote(oracle, quote),
+        ),
+      );
+      expect(result).toEqual({ ...FROM_LINK, ...PAYER, converted_amount: 1 });
+    }
   });
 
-  it("refund_payment, whose amount once fed the commitment and then the refund coin", async () => {
+  it("attest_revenue_at_least, whose per-payment helper runs four times", async () => {
+    const PAYERS = [bytes32(0x31), bytes32(0x32), bytes32(0x33), bytes32(0x34)];
+    const REFUNDS = [bytes32(0x41), bytes32(0x42), bytes32(0x43), bytes32(0x44)];
     const h = await deployPay(base());
-    await h.call("create_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, 0n);
-    await h.call("settle_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, coin(AMOUNT, KUSD));
-    const reads = await readsDuring(() =>
-      h.call("refund_payment", InvoiceKind.STANDARD, TokenKind.KUSD, coin(AMOUNT, KUSD)),
+    await h.call("create_invoice", InvoiceKind.MULTIPAY, TokenKind.NATIVE, 0n);
+    const receipts: Uint8Array[] = [];
+    for (let i = 0; i < 4; i++) {
+      h.as({ payerKey: nth(PAYERS, i), payerRefund: { bytes: nth(REFUNDS, i) } });
+      receipts.push(
+        await h.call("settle_invoice", InvoiceKind.MULTIPAY, TokenKind.NATIVE, coin(AMOUNT)),
+      );
+    }
+    const tag = ownerTagOf(OWNER);
+    h.as({
+      merchantKey: MERCHANT,
+      attestedAmounts: [AMOUNT, AMOUNT, AMOUNT, AMOUNT],
+      attestedSalts: [SALT, SALT, SALT, SALT],
+      attestedOwners: [tag, tag, tag, tag],
+      attestedPayouts: [PAYOUT, PAYOUT, PAYOUT, PAYOUT],
+      attestedPayers: PAYERS,
+      attestedRefunds: REFUNDS,
+      attestedIndices: [0n, 0n, 0n, 0n],
+      attestedPaths: receipts.map((receipt) => {
+        const path = ledgerOf(h).receipt_tree.findPathForLeaf(receipt);
+        if (!path) throw new Error("receipt not found in the tree");
+        return path;
+      }),
+    });
+    const result = await reads(() =>
+      h.call("attest_revenue_at_least", InvoiceKind.MULTIPAY, TokenKind.NATIVE, AMOUNT * 4n),
     );
-    expectOnce(reads);
-    expect(reads.invoice_amount).toBe(1);
+    // The merchant key is read once and checked against all four commitments and the digest: a
+    // second read could name one merchant in the commitments and another in the digest.
+    expect(result).toEqual({
+      attested_amounts: 1,
+      attested_indices: 1,
+      attested_owners: 1,
+      attested_paths: 1,
+      attested_payers: 1,
+      attested_payouts: 1,
+      attested_refunds: 1,
+      attested_salts: 1,
+      merchant_key: 1,
+    });
+    // The read-only circuits take no witnesses at all.
+    for (const name of [
+      "invoice_exists",
+      "is_settled",
+      "receipt_exists",
+      "is_refunded",
+      "attestation_exists",
+    ] as const) {
+      expect(await reads(() => h.call(name, nth(receipts, 0)))).toEqual({});
+    }
   });
 
-  it("settle_invoice_converted, whose amount once fed the commitment and then the oracle's quote", async () => {
-    const oracle = generateOracleKeypair();
-    const converted = 91_300n;
-    const h = await deployPay(base({ convertedAmount: converted }), oracle.publicKey);
-    await h.call("create_invoice", InvoiceKind.STANDARD, TokenKind.NATIVE, 0n);
-    const quote = {
-      baseAmount: AMOUNT,
-      convertedAmount: converted,
-      fromToken: TokenKind.NATIVE,
-      toToken: TokenKind.KUSD,
-      expiresAt: T0 + 3_600n,
-    };
-    const reads = await readsDuring(() =>
+  it("settle_batch, whose per-invoice helper runs four times", async () => {
+    const MERCHANTS = [bytes32(0xa1), bytes32(0xa2), bytes32(0xa3), bytes32(0xa4)];
+    const PAYOUTS = [bytes32(0xd1), bytes32(0xd2), bytes32(0xd3), bytes32(0xd4)];
+    const SALTS = [bytes32(0xb1), bytes32(0xb2), bytes32(0xb3), bytes32(0xb4)];
+    const OWNERS = [bytes32(0xe1), bytes32(0xe2), bytes32(0xe3), bytes32(0xe4)];
+    const AMOUNTS = [1_000n, 2_000n, 3_000n, 4_000n];
+    const h = await deployPay();
+    for (let i = 0; i < 4; i++) {
+      h.as(
+        base({
+          merchantKey: nth(MERCHANTS, i),
+          merchantPayout: { bytes: nth(PAYOUTS, i) },
+          salt: nth(SALTS, i),
+          amount: nth(AMOUNTS, i),
+          ownerSecret: nth(OWNERS, i),
+        }),
+      );
+      await h.call("create_invoice", InvoiceKind.MULTIPAY, TokenKind.KUSD, 0n);
+    }
+    h.as(
+      base({
+        batchAmounts: AMOUNTS,
+        batchSalts: SALTS,
+        batchOwners: OWNERS.map((secret) => ownerTagOf(secret)),
+        batchMerchants: MERCHANTS,
+        batchPayouts: PAYOUTS.map((bytes) => ({ bytes })),
+        batchIndices: [0n, 1n, 2n, 3n],
+      }),
+    );
+    const result = await reads(() =>
       h.call(
-        "settle_invoice_converted",
-        InvoiceKind.STANDARD,
-        TokenKind.NATIVE,
+        "settle_batch",
+        InvoiceKind.MULTIPAY,
         TokenKind.KUSD,
-        coin(converted, KUSD),
-        quote.expiresAt,
-        signQuote(oracle, quote),
+        AMOUNTS.map((amount) => coin(amount, KUSD)),
       ),
     );
-    expectOnce(reads);
-    expect(reads.invoice_amount).toBe(1);
-    expect(reads.merchant_payout).toBe(1);
-    // The native colour is unused here but keeps the import honest for the paid-in-NIGHT case.
-    expect(NATIVE).toHaveLength(32);
+    expect(result).toEqual({
+      batch_amounts: 1,
+      batch_indices: 1,
+      batch_merchants: 1,
+      batch_owners: 1,
+      batch_payouts: 1,
+      batch_salts: 1,
+      payer_key: 1,
+      payer_refund: 1,
+    });
   });
 });
