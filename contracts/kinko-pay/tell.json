@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "intended": [
+    {
+      "kind": "linkable",
+      "field": "invoices",
+      "reason": "Tell sees a hash of a stable private input (merchant key, payout key, owner secret or the link's owner tag) reach the invoices map and cannot see that the same hash also takes invoice_salt(), 256 fresh random bits per invoice drawn by the app, so two invoices of one merchant get unrelated commitments. contracts/kinko-pay/test/kinko-pay.test.ts, 'commitment binding', checks that a different salt gives a different commitment."
+    },
+    {
+      "kind": "linkable",
+      "field": "cards",
+      "reason": "The gift registry key hashes the issuer secret together with the card's own secret, which is random per card, so two cards of one issuer are unrelated entries. Tell cannot see the per-card secret's freshness."
+    },
+    {
+      "kind": "attributable",
+      "circuit": "create_invoice",
+      "field": "invoices",
+      "reason": "The owner tag stored with an invoice is the hash of an owner secret that the app draws fresh for every invoice (newInvoiceSecrets), so one merchant's invoices carry unrelated tags. The contract cannot enforce that a client does not reuse an owner secret: a client that does links its invoices through their public tags. The SDK and the app never reuse one."
+    }
+  ]
+}

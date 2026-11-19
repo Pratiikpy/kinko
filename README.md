@@ -181,6 +181,17 @@ Every defence Kinko relies on is listed in the [threat model](docs/THREAT-MODEL.
 
 This is experimental software built for a hackathon. It has not been audited. Do not use it with funds you cannot afford to lose.
 
+## Privacy review with Tell
+
+[Tell](https://github.com/RohanGlitched/tell) (Apache-2.0, by Rohan Borade) runs the real Compact compiler, traces every private input to every public ledger operation and grades each contract by what it reveals. It was run on `kinko_pay`, `kinko_gift` and `kinko_tags` (commit `5463446`, compilers 0.36.1 and 0.31.1).
+
+- **Without a policy:** `kinko_tags` A, `kinko_gift` B, `kinko_pay` B, with 21 findings at "low" and none above.
+- **What the 21 are:** the same thing in different circuits. Tell sees a hash of a stable private input (merchant key, payout key, owner secret, the link's owner tag, the gift issuer secret) reach a ledger map and calls it a tag that links one holder's actions. It cannot see that the same hash also takes a fresh random salt per invoice (a per-card secret for gifts), so two invoices of one merchant have unrelated commitments, which the contract tests check ("commitment binding").
+- **One is a real dependency, not a false positive:** the owner tag stored with an invoice is the hash of an owner secret the app draws fresh for every invoice. The contract cannot force a client to do that, and a client that reuses an owner secret links its invoices through their public tags. The app and the SDK never reuse one.
+- **With [`contracts/kinko-pay/tell.json`](contracts/kinko-pay/tell.json):** all three grade A. The policy marks those findings as intended with the reasons above, which is a statement of ours, not something Tell proved; the findings stay in Tell's JSON and SARIF output as suppressed.
+
+To reproduce: clone Tell, `npm ci --ignore-scripts`, then `npx tsx engine/src/cli.ts <dir with the contracts and tell.json>` with the Compact compilers 0.31.1 and 0.36.x installed. Tell is not run in Kinko's CI.
+
 ## Credits
 
 Kinko is built on other people's work, used under their licences or with their owners' permission.
@@ -193,6 +204,7 @@ Kinko is built on other people's work, used under their licences or with their o
 | [Stock & Foil](https://gitlab.com/RaYYeR220/stock-and-foil) (Apache-2.0) | The disclosure design: records sealed in-circuit to an examiner key, two-of-three keyholder approval, case-scoped shares and the disclosure log. The fee sponsor in `services/sponsor` (policy, service, HTTP server and their tests) is adapted from its sponsor, modified for Kinko's contracts, wire format and wallet. |
 | [Midnight examples: private-party](https://github.com/midnightntwrk/midnight-examples) (Apache-2.0) | The DUST sponsorship pattern the card wallet and sponsor follow: the user binds a transaction balancing only its own value, and the sponsor balances DUST alone. |
 | [NightKit](https://nightkit.1am.xyz) by 1AM | Wallet connection for Midnight wallets and Ethereum sign-in, and fee sponsorship for its accounts. |
+| [Tell](https://github.com/RohanGlitched/tell) (Apache-2.0) by Rohan Borade | A privacy leak scanner for Compact contracts, run on Kinko's contracts as an independent check; no code taken. Its approach (grade each circuit by what it reveals, keep a policy of declared intent) is also why `contracts/kinko-pay/tell.json` exists. |
 | [Midnight](https://github.com/midnightntwrk) | Compact, midnight-js, the wallet SDK and the DApp Connector API, and the example applications studied for browser wiring. |
 
 Studied for ideas, with no code taken: zk.money (Aztec), USDCx (Aleo), Railgun's Private Proofs of Innocence, Chainlink Proof of Reserve, exchange proof-of-reserve pages, and the wallet birthday that Zcash and Bitcoin light wallets use to skip the history from before a wallet existed, which the card's birth and `services/snapshots` carry over to Midnight's shielded tree.
