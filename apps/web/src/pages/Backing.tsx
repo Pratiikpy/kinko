@@ -12,7 +12,7 @@ import {
   Skeleton,
 } from "../components/ui.tsx";
 import { useAsync } from "../hooks/useAsync.ts";
-import { EVM_RPC_URL, MIDNIGHT_EXPLORER_URL, PUBLIC_INDEXER } from "../lib/config.ts";
+import { EVM_CHAIN_ID, EVM_RPC_URL, MIDNIGHT_EXPLORER_URL, PUBLIC_INDEXER } from "../lib/config.ts";
 import { evmTokenHolderUrl, latestBlock, usdcBalance } from "../lib/evm.ts";
 import { formatAmount, relativeTime, toHex } from "../lib/format.ts";
 import { publicDataProvider } from "../lib/midnight/providers.ts";
@@ -105,17 +105,25 @@ export default function Backing() {
     ledgerEvmVault !== undefined &&
     deployment.evmVaultAddress.toLowerCase() !== ledgerEvmVault.toLowerCase();
 
+  // The account to read USDC from: the one the Midnight ledger names. A build that pins its vault
+  // may read its own pin while the ledger cannot be read; a build that pins nothing has only the
+  // relayer's word for the account, so it reads nothing until the ledger answers.
+  const evmTarget =
+    ledgerEvmVault ??
+    (state.status === "ready" && state.source === "pinned"
+      ? deployment?.evmVaultAddress
+      : undefined);
   const ethereum = useAsync(
     async () => {
-      if (!deployment || !ledgerEvmVault) throw new Error("Vault address unknown.");
+      if (!deployment || !evmTarget) throw new Error("Vault address unknown.");
       const [balance, block] = await Promise.all([
-        usdcBalance(deployment.usdcAddress, ledgerEvmVault),
+        usdcBalance(deployment.usdcAddress, evmTarget),
         latestBlock(),
       ]);
       return { balance, block };
     },
-    [deployment?.usdcAddress, ledgerEvmVault],
-    { intervalMs: 30_000, enabled: Boolean(deployment && EVM_RPC_URL && ledgerEvmVault) },
+    [deployment?.usdcAddress, evmTarget],
+    { intervalMs: 30_000, enabled: Boolean(deployment && EVM_RPC_URL && evmTarget) },
   );
 
   const refresh = () => {
@@ -134,7 +142,9 @@ export default function Backing() {
             message:
               "The vault account this app was given is not the one the Midnight vault holds USDC in",
           }
-        : toRead(ethereum, (v) => v.balance);
+        : !evmTarget
+          ? { status: "skipped", reason: "Waiting for the vault account from the Midnight ledger" }
+          : toRead(ethereum, (v) => v.balance);
   const mnSupply = midnight.status === "ready" ? midnight.value.supply : null;
   const mnRead: Read<bigint> = !PUBLIC_INDEXER
     ? { status: "skipped", reason: "No public indexer in this build" }
@@ -149,7 +159,13 @@ export default function Backing() {
 
   // The verdict uses the browser's own reads when it has them; the relayer's
   // report only fills a gap, and the page says which was used.
-  const vaultHeld = ethRead.status === "ready" ? ethRead.value : rep?.usdcInVault;
+  // A named vault account that the ledger contradicts is not something the relayer's figure may
+  // paper over: the verdict stops there.
+  const vaultHeld = vaultAccountDisagrees
+    ? undefined
+    : ethRead.status === "ready"
+      ? ethRead.value
+      : rep?.usdcInVault;
   const circulating =
     mnRead.status === "ready" ? mnRead.value : rep ? rep.kusdMinted - rep.kusdBurned : undefined;
   const independent = ethRead.status === "ready" && mnRead.status === "ready";
@@ -180,9 +196,7 @@ export default function Backing() {
         Kinko's dollars are private, but their backing is not. This page reads the USDC held by the
         vault on Ethereum and the KUSD in circulation on Midnight, from your browser, and compares
         them.
-        {deployment && deployment.evmChainId !== 1
-          ? " On this build the USDC is Sepolia test USDC."
-          : ""}
+        {EVM_CHAIN_ID !== 1 ? " On this build the USDC is Sepolia test USDC." : ""}
       </PageHeader>
 
       {state.status === "unavailable" ? (
@@ -210,14 +224,18 @@ export default function Backing() {
                   : "Fully backed, by the relayer's report"
                 : verdict === "short"
                   ? "The vault holds less than is in circulation"
-                  : "Cannot be verified right now"}
+                  : vaultAccountDisagrees
+                    ? "The vault account does not match"
+                    : "Cannot be verified right now"}
             </p>
             <p className="mt-1 text-sm text-ink-2">
-              {verdict === "unknown"
-                ? "One of the two figures could not be read. Nothing is assumed in its place."
-                : independent
-                  ? "Both figures were read by this browser directly from the two chains."
-                  : "At least one figure comes from the relayer's report, because this browser could not read that chain directly."}
+              {vaultAccountDisagrees
+                ? "The Ethereum account this app was given is not the account the Midnight vault holds its USDC in, so its balance says nothing about the KUSD. Nothing is assumed in its place."
+                : verdict === "unknown"
+                  ? "One of the two figures could not be read. Nothing is assumed in its place."
+                  : independent
+                    ? "Both figures were read by this browser directly from the two chains."
+                    : "At least one figure comes from the relayer's report, because this browser could not read that chain directly."}
             </p>
           </div>
           {verdict !== "unknown" && vaultHeld !== undefined && circulating !== undefined ? (

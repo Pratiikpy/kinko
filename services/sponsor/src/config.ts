@@ -69,6 +69,28 @@ export function deployedPayContract(root: string, networkId: string): string | u
 }
 
 /**
+ * A positive integer amount from the environment, as a bigint, or the default when unset.
+ *
+ * @param env - The environment.
+ * @param name - The variable.
+ * @param fallback - The value when it is unset.
+ * @returns The amount.
+ * @throws {Error} When the variable is set to anything but plain digits above zero.
+ */
+function positiveBigInt(
+  env: Record<string, string | undefined>,
+  name: string,
+  fallback: bigint,
+): bigint {
+  const text = env[name]?.trim();
+  if (text === undefined || text === "") return fallback;
+  if (!/^[0-9]+$/.test(text) || BigInt(text) <= 0n) {
+    throw new Error(`${name} must be a positive whole number, got "${text}".`);
+  }
+  return BigInt(text);
+}
+
+/**
  * A limit from the environment: a whole number or the default, never NaN. A bare `Number()` turned
  * `SPONSOR_RATE_MAX=5/min` into NaN, and every comparison against NaN is false, so the limit
  * switched itself off.
@@ -133,7 +155,7 @@ export function readConfig(
     policy: {
       contracts,
       circuits: circuits.length > 0 ? circuits : [...DEFAULT_SPONSORED_CIRCUITS],
-      maxFeeSpeck: BigInt(env.SPONSOR_MAX_FEE_SPECK ?? DEFAULT_MAX_FEE_SPECK.toString()),
+      maxFeeSpeck: positiveBigInt(env, "SPONSOR_MAX_FEE_SPECK", DEFAULT_MAX_FEE_SPECK),
       budgetSpeck: BigInt(budgetText),
       rateLimit: {
         maxRequests: wholeNumber(env, "SPONSOR_RATE_MAX", DEFAULT_RATE_LIMIT.maxRequests),

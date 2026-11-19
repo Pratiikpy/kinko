@@ -17,8 +17,10 @@ import {
   CONTRACTS,
   EVM_CHAIN_ID,
   EVM_RPC_URL,
+  MPC_PUBLIC_KEY,
   NETWORK_ID,
   NIGHTKIT_VAULT_URL,
+  PIN_STATUS,
   PUBLIC_INDEXER,
   RELAYER_URL,
   ZK_BASE_URL,
@@ -228,6 +230,18 @@ export default function Settings() {
             <Row label="Ethereum RPC" value={EVM_RPC_URL} />
             <Row label="NightKit vault" value={NIGHTKIT_VAULT_URL} />
             <Row label="Proving keys" value={ZK_BASE_URL} />
+            <div className="flex justify-between py-2.5 text-sm">
+              <dt className="text-ink-2">Vault pinned in this build</dt>
+              <dd className="text-ink">
+                {PIN_STATUS === "pinned"
+                  ? MPC_PUBLIC_KEY
+                    ? "Yes, with the MPC key: deposit addresses are checked here"
+                    : "Yes, but no MPC key, so deposit addresses are not checked here"
+                  : PIN_STATUS === "partial"
+                    ? "Incomplete: some pin variables are missing or malformed, so the relayer is believed"
+                    : "No: the relayer is believed for the vault"}
+              </dd>
+            </div>
             <Row label="Vault contract" value={d?.vaultContractAddress} />
             <Row label="Vault on Ethereum" value={d?.evmVaultAddress} />
             <Row label="USDC" value={d?.usdcAddress} />

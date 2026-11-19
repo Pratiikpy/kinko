@@ -139,11 +139,19 @@ function MobileMenu({ onClose }: { onClose: () => void }) {
       }
     };
     document.addEventListener("keydown", keys);
+    // At the desktop width the dialog is hidden and the header has its own navigation, so a menu
+    // left open (a tablet turned sideways) would hold the scroll lock and swallow Tab for nothing.
+    const wide = window.matchMedia("(min-width: 1024px)");
+    const widened = (e: MediaQueryListEvent) => {
+      if (e.matches) onClose();
+    };
+    wide.addEventListener("change", widened);
     ref.current?.querySelector<HTMLElement>("a,button")?.focus();
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", keys);
+      wide.removeEventListener("change", widened);
       document.body.style.overflow = overflow;
     };
   }, [onClose]);
@@ -365,7 +373,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
  * @returns One line of footer status.
  */
 function RelayerStatus() {
-  const { state, relayerUp } = useDeployment();
+  const { state, relayerUp, relayerConflict } = useDeployment();
   if (state.status === "loading") {
     return (
       <p className="flex items-center gap-2" role="status">
@@ -382,7 +390,9 @@ function RelayerStatus() {
       )}{" "}
       {relayerUp
         ? "Relayer answering"
-        : "Relayer not answering: deposits and withdrawals wait; payments are unaffected"}
+        : relayerConflict
+          ? "Relayer names a different vault: deposits and withdrawals are off"
+          : "Relayer not answering: deposits and withdrawals wait; payments are unaffected"}
     </p>
   );
 }

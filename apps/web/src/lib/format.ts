@@ -37,9 +37,10 @@ export const AMOUNT_ERROR_TEXT: Record<AmountError, string> = {
 export function parseAmount(text: string, decimals: number = USDC_DECIMALS): ParsedAmount {
   const typed = text.trim();
   if (typed === "") return { ok: false, error: "empty" };
-  // A comma is only a thousands separator when it groups three digits ("1,250.00"). Anywhere else
-  // it is a decimal comma ("12,50"), which would be read as a hundred times the amount typed.
-  if (typed.includes(",") && !/^\d{1,3}(,\d{3})+(\.\d*)?$/.test(typed)) {
+  // A comma is only a thousands separator when it groups three digits after a first group that
+  // does not start with zero ("1,250.00"). Anywhere else it is a decimal comma ("12,50", "0,125"),
+  // which would be read as a hundred or a thousand times the amount typed.
+  if (typed.includes(",") && !/^[1-9]\d{0,2}(,\d{3})+(\.\d*)?$/.test(typed)) {
     return { ok: false, error: "format" };
   }
   const raw = typed.replace(/,/g, "");

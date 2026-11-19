@@ -274,6 +274,22 @@ describe("refusals, all of which happen before any DUST moves", () => {
     expect(wallet.paid).toHaveLength(0);
   });
 
+  it("lets a transaction refused before submission be sent again, but not one the node saw", async () => {
+    let dust = 100n;
+    const wallet = fakeSigner({ fee: 500n, dust: 1_000_000n });
+    const { service } = build({
+      signer: { ...wallet.signer, dustSpeck: () => Promise.resolve(dust) },
+    });
+    const tx = request({ tx: "ab12" });
+    // Short of DUST right now: refused, nothing submitted.
+    expect((await rejection(service.sponsor(tx, caller))).code).toBe("SPONSOR_OUT_OF_DUST");
+    // Once the sponsor is topped up, the same transaction is accepted.
+    dust = 1_000_000n;
+    await service.sponsor(tx, caller);
+    // And once the node has seen it, a repeat is refused before it can cost anything.
+    expect((await rejection(service.sponsor(tx, caller))).code).toBe("DUPLICATE_TRANSACTION");
+  });
+
   it("does not count a balancing failure as spend, because nothing moved", async () => {
     const wallet = fakeSigner({ fee: 100n });
     const harness = build({

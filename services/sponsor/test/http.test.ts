@@ -186,6 +186,23 @@ describe("an open sponsor", () => {
     expect(submitted).toBe(1);
   });
 
+  it.each(["0xabcd12", "ABCD12", "0xABcd12"])(
+    "treats %s as the same transaction as abcd12",
+    async (respelt) => {
+      const send = (tx: string): Promise<Response> =>
+        fetch(`${endpoint}${SPONSOR_PATH}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ protocol: SPONSOR_PROTOCOL_VERSION, tx }),
+        });
+      expect((await send("abcd12")).status).toBe(200);
+      const again = await send(respelt);
+      expect(again.status).toBe(400);
+      expect(await again.json()).toMatchObject({ code: "DUPLICATE_TRANSACTION" });
+      expect(submitted).toBe(1);
+    },
+  );
+
   it("answers a body that is not a JSON object with a plain refusal, not a crash", async () => {
     for (const text of ["null", "7", "[]", '"x"']) {
       const response = await fetch(`${endpoint}${SPONSOR_PATH}`, {

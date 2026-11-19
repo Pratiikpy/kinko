@@ -112,6 +112,18 @@ export const PINNED_VAULT = (() => {
     : undefined;
 })();
 
+/**
+ * Whether this build pins its vault. A build with some of the pin variables but not all of them
+ * has quietly pinned nothing, which Settings says instead of leaving it to be discovered.
+ */
+export const PIN_STATUS: "pinned" | "partial" | "none" = PINNED_VAULT
+  ? "pinned"
+  : [env.VITE_VAULT_CONTRACT_ADDRESS, env.VITE_USDC_ADDRESS, env.VITE_EVM_VAULT_ADDRESS].some(
+        (v) => clean(v) !== undefined,
+      )
+    ? "partial"
+    : "none";
+
 /** The environment variable that configures each contract, for messages. */
 export const CONTRACT_ENV: Record<KinkoContract, string> = {
   pay: "VITE_KINKO_PAY_ADDRESS",

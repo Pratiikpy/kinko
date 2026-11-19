@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 
-import { NETWORK_ID, PINNED_VAULT } from "../lib/config.ts";
+import { EVM_CHAIN_ID, NETWORK_ID, PINNED_VAULT } from "../lib/config.ts";
 import { relayer, RelayerError } from "../lib/relayer.ts";
 
 export interface Deployment {
@@ -25,6 +25,8 @@ export type DeploymentState =
       readonly status: "ready";
       readonly deployment: Deployment;
       readonly relayerUp: boolean;
+      /** The relayer answered but names a vault other than the one this build pins. */
+      readonly relayerConflict?: boolean;
       readonly source: "relayer" | "pinned";
     }
   | { readonly status: "unavailable"; readonly reason: string };
@@ -32,6 +34,8 @@ export type DeploymentState =
 interface DeploymentValue {
   readonly state: DeploymentState;
   readonly relayerUp: boolean;
+  /** The relayer answered with a vault other than the pinned one. */
+  readonly relayerConflict: boolean;
   readonly refresh: () => void;
 }
 
@@ -66,7 +70,7 @@ export function DeploymentProvider({ children }: { children: ReactNode }) {
           PINNED_VAULT
             ? {
                 status: "ready",
-                deployment: { ...PINNED_VAULT, network: NETWORK_ID },
+                deployment: { ...PINNED_VAULT, evmChainId: EVM_CHAIN_ID, network: NETWORK_ID },
                 relayerUp: false,
                 source: "pinned",
               }
@@ -84,16 +88,21 @@ export function DeploymentProvider({ children }: { children: ReactNode }) {
         // another vault or token would point every deposit, withdrawal and backing figure at
         // accounts of its choosing. A disagreement turns the vault features off.
         if (PINNED_VAULT && disagrees(PINNED_VAULT, h)) {
+          // The pin stays in force, so the public pages keep reading the right chains; the relayer
+          // is treated as not to be used for vault actions.
           setState({
-            status: "unavailable",
-            reason: "The relayer reports a different vault from the one this app was built for.",
+            status: "ready",
+            deployment: { ...PINNED_VAULT, evmChainId: EVM_CHAIN_ID, network: NETWORK_ID },
+            relayerUp: false,
+            relayerConflict: true,
+            source: "pinned",
           });
           return;
         }
         setState({
           status: "ready",
           deployment: PINNED_VAULT
-            ? { ...PINNED_VAULT, evmChainId: h.evmChainId, network: NETWORK_ID }
+            ? { ...PINNED_VAULT, evmChainId: EVM_CHAIN_ID, network: NETWORK_ID }
             : {
                 vaultContractAddress: h.vaultContractAddress,
                 usdcAddress: h.usdcAddress,
@@ -111,7 +120,7 @@ export function DeploymentProvider({ children }: { children: ReactNode }) {
           PINNED_VAULT
             ? {
                 status: "ready",
-                deployment: { ...PINNED_VAULT, network: NETWORK_ID },
+                deployment: { ...PINNED_VAULT, evmChainId: EVM_CHAIN_ID, network: NETWORK_ID },
                 relayerUp: false,
                 source: "pinned",
               }
@@ -131,7 +140,12 @@ export function DeploymentProvider({ children }: { children: ReactNode }) {
     setTick((t) => t + 1);
   }, []);
   const value = useMemo<DeploymentValue>(
-    () => ({ state, relayerUp: state.status === "ready" && state.relayerUp, refresh }),
+    () => ({
+      state,
+      relayerUp: state.status === "ready" && state.relayerUp,
+      relayerConflict: state.status === "ready" && state.relayerConflict === true,
+      refresh,
+    }),
     [state, refresh],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

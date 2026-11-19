@@ -338,7 +338,9 @@ export class SponsorService {
       });
     }
 
-    const digest = createHash("sha256").update(request.tx).digest("hex");
+    // The same bytes spelled with or without 0x, or in another case, are the same transaction.
+    const canonical = request.tx.trim().replace(/^0x/i, "").toLowerCase();
+    const digest = createHash("sha256").update(canonical).digest("hex");
     this.forgetOldTransactions();
     if (this.taken.has(digest)) {
       this.refusedCount += 1;
@@ -356,7 +358,6 @@ export class SponsorService {
     // Reserve, synchronously, the most this request could cost. Everything from here to the
     // `finally` below runs with that amount held against the budget, so two requests arriving
     // together cannot both be told there is room for one.
-    this.taken.set(digest, this.now());
     const reservation = this.policy.maxFeeSpeck;
     if (this.spentSpeck + this.reservedSpeck + reservation > this.policy.budgetSpeck) {
       this.limiter.refund(caller.id);
@@ -371,6 +372,8 @@ export class SponsorService {
           `${String(this.reservedSpeck)}, wanted ${String(reservation)}`,
       });
     }
+    this.taken.set(digest, this.now());
+    let attempted = false;
     this.reservedSpeck += reservation;
 
     // A reservation must turn into spend in the same tick it is counted as spent, or the two
@@ -448,6 +451,7 @@ export class SponsorService {
 
       let txId: string;
       try {
+        attempted = true;
         txId = await this.signer.submit(sponsored);
       } catch (error) {
         commit(feeSpeck);
@@ -487,7 +491,10 @@ export class SponsorService {
         contractAddress: decision.contractAddress,
       };
     } finally {
-      // Covers every path that refused before committing anything.
+      // Covers every path that refused before committing anything. A transaction that was refused
+      // before it was submitted may be sent again once the cause is gone; one that reached the
+      // node stays remembered, since the node may have taken it.
+      if (!attempted) this.taken.delete(digest);
       release();
     }
   }

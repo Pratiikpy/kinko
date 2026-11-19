@@ -82,7 +82,7 @@ export function ContractNotice({ contracts }: { contracts: readonly KinkoContrac
 
 /** The same, for the vault and relayer. */
 export function VaultNotice() {
-  const { state, relayerUp, refresh } = useDeployment();
+  const { state, relayerUp, relayerConflict, refresh } = useDeployment();
   if (state.status === "loading") return null;
   if (state.status === "unavailable") {
     return (
@@ -102,6 +102,16 @@ export function VaultNotice() {
         >
           {state.reason} Deposits and withdrawals are unavailable until it answers. Your balance and
           payments are unaffected.
+        </Notice>
+      </div>
+    );
+  }
+  if (relayerConflict) {
+    return (
+      <div className="mb-5">
+        <Notice tone="bad" title="The relayer names a different vault">
+          It answered, but its vault is not the one this app was built for, so deposits and
+          withdrawals are off. Payments are unaffected.
         </Notice>
       </div>
     );

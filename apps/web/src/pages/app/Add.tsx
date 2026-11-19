@@ -28,6 +28,7 @@ import {
 import { useAsync } from "../../hooks/useAsync.ts";
 import { useCall } from "../../hooks/useCall.ts";
 import { useRelayedRequest } from "../../hooks/useRelayedRequest.ts";
+import { EVM_CHAIN_ID } from "../../lib/config.ts";
 import { explain } from "../../lib/errors.ts";
 import { ethBalance, evmChain, evmTxUrl, type Hex, nextNonce, usdcBalance } from "../../lib/evm.ts";
 import { stepsFor } from "../../lib/flow.ts";
@@ -271,7 +272,7 @@ function Funding({ record, deployment }: { record: VaultRequestRecord; deploymen
           {deployment.evmChainId === 1
             ? "Any wallet works: you can also send to this address from an exchange or another app. "
             : "This build runs on Ethereum Sepolia, a test network. Send only Sepolia test USDC to this address, from a wallet connected to Sepolia. An exchange, or any other network, will not reach it and the USDC would be lost. "}
-          {deployment.evmChainId === 1 ? null : (
+          {EVM_CHAIN_ID === 1 ? null : (
             <>
               Test funds are free:{" "}
               <ExternalA href="https://faucet.circle.com/">Circle's faucet</ExternalA> gives Sepolia

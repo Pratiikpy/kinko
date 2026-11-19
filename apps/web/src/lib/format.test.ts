@@ -104,7 +104,19 @@ describe("time helpers", () => {
 
 describe("parseAmount commas", () => {
   it("refuses a decimal comma, which would multiply the amount by a hundred", () => {
-    for (const text of ["12,50", "0,99", "1,25", "1,2500", ",5", "1,,000", "1,000,", "12,34,567"]) {
+    for (const text of [
+      "12,50",
+      "0,99",
+      "1,25",
+      "1,2500",
+      ",5",
+      "1,,000",
+      "1,000,",
+      "12,34,567",
+      "0,125",
+      "000,500",
+      "0,500.00",
+    ]) {
       expect(parseAmount(text)).toEqual({ ok: false, error: "format" });
     }
   });

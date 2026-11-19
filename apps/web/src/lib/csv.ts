@@ -120,11 +120,13 @@ export function parseBatch(text: string): ParsedBatch {
       });
       return;
     }
-    // An unquoted "1,250.00" splits into "1" and "250.00": the amount would be $1 and the rest a memo.
-    if (/^\d{1,3}$/.test(rawAmount) && /^\d{3}(\.\d+)?$/.test(rest[0] ?? "")) {
+    // An unquoted "1,250.00" or "12,50" splits at its comma: the amount would be $1 or $12 and the
+    // rest a memo. A comma cannot be told from a column break, so a memo that is only a number is
+    // refused rather than guessed at; the line is named and nothing is paid.
+    if (/^\d+([.,]\d+)?$/.test(rest[0] ?? "")) {
       issues.push({
         line,
-        message: `"${rawAmount},${rest[0] ?? ""}" has a comma inside the amount. Write it without one, or put it in quotes.`,
+        message: `"${rawAmount},${rest[0] ?? ""}" may be one amount with a comma in it. Write the amount without a comma, or put it in quotes, and start a memo with a word.`,
       });
       return;
     }

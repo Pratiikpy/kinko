@@ -89,6 +89,8 @@ describe("readConfig", () => {
       ["SPONSOR_RATE_WINDOW_MS", "-1"],
       ["SPONSOR_RATE_MAX", "0"],
       ["SPONSOR_PORT", "80.5"],
+      ["SPONSOR_MAX_FEE_SPECK", "-1"],
+      ["SPONSOR_MAX_FEE_SPECK", "0x10"],
     ] as const) {
       expect(() =>
         readConfig(
@@ -96,7 +98,7 @@ describe("readConfig", () => {
           repo(),
           "undeployed",
         ),
-      ).toThrow(new RegExp(`${name} must be a whole number`));
+      ).toThrow(new RegExp(`${name} must be a (positive )?whole number`));
     }
   });
 });

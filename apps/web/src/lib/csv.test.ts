@@ -72,16 +72,29 @@ describe("parseBatch", () => {
 });
 
 describe("parseBatch commas in amounts", () => {
-  it("names a line whose unquoted thousands comma split the amount, instead of paying $1", () => {
-    const parsed = parseBatch("@alice,1,250.00,rent\n@bob_designs,480,fine\n");
-    expect(parsed.rows.map((r) => r.recipient)).toEqual(["@bob_designs"]);
-    expect(parsed.issues).toHaveLength(1);
-    expect(parsed.issues[0]).toMatchObject({ line: 1 });
-    expect(parsed.issues[0]?.message).toMatch(/comma inside the amount/);
+  it("names a line whose unquoted comma may have split the amount, instead of paying part of it", () => {
+    for (const line of [
+      "@alice,1,250.00,rent",
+      "@alice,12,50",
+      "@alice,1,250,000.00",
+      "@alice,5,123",
+    ]) {
+      const parsed = parseBatch(`${line}
+@bob_designs,480,fine
+`);
+      expect(parsed.rows.map((r) => r.recipient)).toEqual(["@bob_designs"]);
+      expect(parsed.issues).toHaveLength(1);
+      expect(parsed.issues[0]).toMatchObject({ line: 1 });
+      expect(parsed.issues[0]?.message).toMatch(/may be one amount with a comma/);
+    }
   });
 
-  it("reads a quoted thousands comma, and a plain amount with a numeric memo", () => {
+  it("reads a quoted amount with commas, and a memo that starts with a word", () => {
     expect(parseBatch('@alice,"1,250.00",rent').rows[0]?.amount).toBe(1_250_000_000n);
-    expect(parseBatch("@alice,5,12").rows[0]).toMatchObject({ amount: 5_000_000n, memo: "12" });
+    expect(parseBatch('@alice,"1,250,000.00",rent').rows[0]?.amount).toBe(1_250_000_000_000n);
+    expect(parseBatch("@alice,5,invoice 123").rows[0]).toMatchObject({
+      amount: 5_000_000n,
+      memo: "invoice 123",
+    });
   });
 });
