@@ -1,0 +1,118 @@
+// `pollRespondBidirectional`: stage 2 of the MPC round trip. Poll the signet
+// responder's emitted respond-bidirectional events by request id until an MPC
+// attestation appears that VERIFIES, its signature against the vault's
+// response key and its attested width and hash against the serialized output
+// obtained for the request (recomputed from the EVM trace or downloaded from
+// the MPC's output cache), and return the resolved outcome. There is
+// deliberately no push/websocket alternative.
+import { OutputKind, type RequestIdHex } from "@sig-net/midnight";
+
+import { PollProgress } from "../poll-progress.ts";
+import { schemaJson } from "../schema-json.ts";
+import { sleepUnlessAborted } from "../sleep-unless-aborted.ts";
+import { createResponseReader, type VaultContext } from "../vault-context.ts";
+import {
+  fetchAttestedRespondOutcome,
+  type RespondOutcome,
+  RespondPollMemo,
+} from "./respond-output.ts";
+
+export { fetchAttestedRespondOutcome, type RespondOutcome } from "./respond-output.ts";
+
+/** Options for {@link pollRespondBidirectional}. */
+export interface PollRespondBidirectionalOptions {
+  /** The request id to poll for. */
+  readonly requestId: RequestIdHex;
+  /** Poll interval in milliseconds. */
+  readonly intervalMs: number;
+  /** Give-up timeout in milliseconds. */
+  readonly timeoutMs: number;
+  /**
+   * The resolved ledger-tree path of the map holding the request. Defaults to
+   * VAULT_DEPOSIT_REQUESTS_PATH (the bidirectionalDepositMap).
+   */
+  readonly requestsPath?: readonly number[];
+}
+
+/**
+ * Poll the signet responder until an MPC respond-bidirectional attestation
+ * for `options.requestId` VERIFIES against the output obtained for it, and
+ * return the resolved outcome.
+ *
+ * The serialized output travels off chain, so each tick obtains it from the
+ * context's `respondOutputSource` (recomputed from the observed raw EVM
+ * output, or downloaded from the MPC's output cache) and checks the posted
+ * events against it, each signature against the vault's response key and
+ * each attested width and hash against the bytes (see
+ * `fetchAttestedRespondOutcome`): the event log is unauthenticated, and that
+ * check is what makes a returned record meaningful off-chain.
+ * `queueAttestation` runs the same signature check in-circuit and the
+ * complete circuit checks the bytes against the attested width and hash,
+ * which are the actual authentication gate. The output schema an `evm-node`
+ * recomputation runs is the request record's own, read once here: it is what
+ * the MPC ran, and the reader, the pinned response key and the observed
+ * output are likewise resolved once for the whole poll
+ * ({@link RespondPollMemo}). This flow owns the poll loop, the timeout, and
+ * the reporting: it logs the outcome (the verified output kind and, for an
+ * executed transfer, its success flag); acting on it (claiming, refunding)
+ * is the caller's job.
+ *
+ * @param context - The flow context.
+ * @param options - What to poll for and how patiently.
+ * @returns The resolved outcome (attested event + verified output bytes).
+ * @throws {Error} When the contract has no state on-chain or holds no
+ *   request under `options.requestId`, or `timeoutMs` elapses with no
+ *   verifying attestation posted (an EVM endpoint or cache that stays
+ *   unreachable surfaces as this timeout: each tick's failure is logged and
+ *   retried, this loop owns the deadline).
+ */
+export async function pollRespondBidirectional(
+  context: VaultContext,
+  options: PollRespondBidirectionalOptions,
+): Promise<RespondOutcome> {
+  console.log(`signet responder:  ${context.responderContractAddress}`);
+  console.log(`request id:        ${options.requestId}`);
+  console.log(`output source:     ${context.respondOutputSource}`);
+  console.log(
+    `poll:              every ${String(options.intervalMs)}ms, up to ${String(options.timeoutMs)}ms`,
+  );
+
+  const memo = new RespondPollMemo(createResponseReader(context, options.requestsPath));
+  const request = await memo.reader.getSignatureRequest(options.requestId);
+  const outputSchema = schemaJson(request.outputDeserializationSchema);
+
+  // The reads are single-shot; this loop owns the cadence and the give-up
+  // timeout.
+  const progress = new PollProgress(`attestation ${options.requestId}`, options.timeoutMs);
+  const giveUp = new AbortController();
+  const timer = setTimeout(() => {
+    giveUp.abort();
+  }, options.timeoutMs);
+  try {
+    while (!giveUp.signal.aborted) {
+      const outcome = await fetchAttestedRespondOutcome(
+        context,
+        options.requestId,
+        context.respondOutputSource,
+        outputSchema,
+        options.requestsPath,
+        progress,
+        memo,
+      );
+      if (outcome !== undefined) {
+        if (outcome.event.outputKind === OutputKind.executed) {
+          console.log(`remote execution ${outcome.succeeded ? "succeeded" : "returned false"}`);
+        } else {
+          console.log(
+            `remote execution ${OutputKind[outcome.event.outputKind]} at block ${String(outcome.event.blockHeight)}: the transaction never executed`,
+          );
+        }
+        return outcome;
+      }
+      await sleepUnlessAborted(options.intervalMs, giveUp.signal);
+    }
+    throw new Error(`timed out: ${progress.summary()}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}

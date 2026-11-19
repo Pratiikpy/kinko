@@ -1,0 +1,800 @@
+// The happy-day e2e flow: initialisation → deposit round trip → withdraw round trip, against
+// contracts the globalSetup pipeline (src/setup.ts) has already
+// compiled/deployed/derived — vitest.config.ts holds the
+// orchestration contract (setup runs first, flow files run one at a time in
+// a pinned order). Tests in THIS file run in source order and feed each
+// other through module-scoped state, so the file is one ordered pipeline on
+// purpose. Run with `yarn test:erc20-vault:e2e` from the repo root (--bail 1
+// stops the pipeline at the first failure); without RUN_INTEGRATION_TESTS
+// the whole suite skips so plain `yarn test` stays offline. Set
+// STEP_THROUGH=1 to pause before each step (after the first) until you hit
+// Enter in the terminal.
+//
+// Tests drive the vault THROUGH the example's typed flow functions
+// (src/flows/) — in-process, never a subprocess.
+import {
+  abiWordToUint128,
+  bytesToHex,
+  OutputKind,
+  parseSecp256k1PublicKey,
+  requestIdBytes,
+  type RequestIdHex,
+  requestIdHex,
+  stripHexPrefix,
+  verifyRespondBidirectionalEvent,
+} from "@sig-net/midnight";
+import { calculateSignetAttestationDigest } from "@sig-net/midnight/testing";
+import {
+  evmAddressBytes,
+  printVaultState,
+  readVaultLedger,
+  VAULT_DEPOSIT_REQUESTS_PATH,
+  VAULT_PATH_BYTES,
+  VAULT_WITHDRAW_REQUESTS_PATH,
+  vaultGasEnvelope,
+} from "@sig-net/midnight-examples-erc20-vault-contract";
+import {
+  InitialiseVaultOutcome,
+  resolveAllowedTokens,
+  resolveInitialiseConfig,
+  resolveTokenFeesFor,
+} from "@sig-net/midnight-examples-erc20-vault-deploy";
+import { waitForFacadeState } from "@sig-net/midnight-examples-lib";
+import {
+  banner,
+  getErc20Balance,
+  getEthBalance,
+  getTransactionNonce,
+  isTransactionMined,
+  logSkip,
+  pollSignetNotification,
+  requireEnv as requireEnvOf,
+} from "@sig-net/midnight-examples-test-harness";
+import { injectE2eEnv, installFlowHooks } from "@sig-net/midnight-examples-test-harness/flow-hooks";
+import { formatEther, JsonRpcProvider, parseEther, parseUnits, type Transaction } from "ethers";
+import { afterAll, describe, expect, it } from "vitest";
+
+import { fundingSummary } from "../src/evm-logging.ts";
+import { addAllowedTokens } from "../src/flows/add-allowed-tokens.ts";
+import { broadcastEvm } from "../src/flows/broadcast-evm.ts";
+import { settleDeposit } from "../src/flows/complete-deposit.ts";
+import { settleWithdraw } from "../src/flows/complete-withdraw.ts";
+import { initialise } from "../src/flows/initialise.ts";
+import {
+  pollRespondBidirectional,
+  type RespondOutcome,
+} from "../src/flows/poll-respond-bidirectional.ts";
+import { pollSignatureResponse } from "../src/flows/poll-signature-response.ts";
+import { startDeposit } from "../src/flows/start-deposit.ts";
+import { startWithdraw } from "../src/flows/start-withdraw.ts";
+import { POLL_TIMEOUT_MS } from "../src/poll-timeout.ts";
+import { vaultFeesOf } from "../src/vault-fees.ts";
+import { createVaultSession } from "../src/vault-session.ts";
+import { vaultTokenType } from "../src/vault-token.ts";
+
+const MINUTE = 60_000;
+
+/**
+ * The setup-populated env accumulator: repo-root `.env` overlaid with the
+ * real environment (which wins), plus every value the globalSetup pipeline
+ * derived or deployed. Empty when RUN_INTEGRATION_TESTS is unset — the suite
+ * below skips before reading it.
+ */
+const env = injectE2eEnv();
+
+/** Assert a setup step populated `name`, failing with a pointed message. */
+const requireEnv = (name: string): string => requireEnvOf(env, name);
+
+// An index read into decoded calldata cannot narrow, so name the word the
+// assertion needs and fail loudly when the contract stored a shorter one.
+const calldataWordAt = (words: readonly Uint8Array[], index: number): Uint8Array => {
+  const word = words.at(index);
+  if (word === undefined) {
+    throw new Error(`decoded calldata has no ABI word at index ${String(index)}`);
+  }
+  return word;
+};
+
+// Wallet facade + vault context + MPC-style reader shared by every test in
+// this file (lazily built, so the offline path never touches the network);
+// stopped once in afterAll.
+const session = createVaultSession(env, "user");
+
+// The fee recipient's session: the deployer wallet, which the local initialise
+// names as the recipient of every fee coin. Only its wallet is read, to see the
+// withdraw fee arrive. Read leniently at module scope: offline the injected env
+// is empty and the suite skips before any test touches it.
+const feeRecipientSession = createVaultSession(
+  { ...env, USER_SEED: env.DEPLOYER_SEED ?? "" },
+  "deployer",
+);
+
+// The withdraw leg drives 0.1 USDC back OUT of the vault: the deposit leg funds
+// that principal plus the withdraw fee the start takes on top of it.
+const WITHDRAW_AMOUNT = parseUnits("0.1", 6);
+
+describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("erc20-vault happy-day e2e", () => {
+  installFlowHooks();
+
+  afterAll(async () => {
+    await session.stop();
+    await feeRecipientSession.stop();
+  });
+
+  it(
+    "initialise [erc-vault contract method call]: seal vault EVM address + MPC response key, allow the suites' ERC20s and read back state",
+    async () => {
+      const context = await session.vaultContext();
+      const readLedger = () =>
+        readVaultLedger(context.providers.publicDataProvider, context.vaultContractAddress);
+
+      // The same arguments the deploy+initialise entrypoint resolves, from the
+      // same env. A rerun against a kept, initialised contract is a no-op inside initialise.
+      const config = await resolveInitialiseConfig(env, context.vaultContractAddress);
+      const outcome = await initialise(context, config);
+      if (outcome === InitialiseVaultOutcome.AlreadyInitialised) {
+        logSkip("initialise", "vault is already initialised (rerun against a kept contract)");
+      }
+
+      // Every later spec deposits or swaps into these, each stamped with the fees the
+      // env resolves. A rerun adds only the missing ones.
+      const allowedTokens = resolveTokenFeesFor(env, resolveAllowedTokens(env));
+      expect(allowedTokens.size, "setup defaults EVM_ALLOWED_TOKENS").toBeGreaterThan(0);
+      const added = await addAllowedTokens(context, allowedTokens);
+      console.log(`allowed ${String(added.length)} new ERC20(s)`);
+
+      await printVaultState(context.providers.publicDataProvider, context.vaultContractAddress);
+
+      const state = await readLedger();
+      expect(state.initialised).toBe(true);
+      expect(`0x${bytesToHex(state.vaultEvmAddress)}`.toLowerCase()).toBe(
+        config.vaultEvmAddress.toLowerCase(),
+      );
+      expect(state.evmChainId).toBe(BigInt(requireEnv("EVM_CHAIN_ID")));
+      // The stored MPC response key, verbatim: the sender-scoped key claim and
+      // completeWithdraw verify responses against.
+      expect(state.mpcResponseKey).toEqual(parseSecp256k1PublicKey(config.mpcResponseKey));
+      // initialise allows the stata pair itself, the deployer every listed ERC20, each
+      // with its fees, and names the fee recipient.
+      expect(state.allowedTokens.lookup(state.stataUnderlying).fees).toEqual(
+        config.stataUnderlyingFees,
+      );
+      expect(state.allowedTokens.lookup(state.stataToken).fees).toEqual(config.stataTokenFees);
+      for (const [token, fees] of allowedTokens) {
+        expect(state.allowedTokens.member(evmAddressBytes(token)), `${token} allowed`).toBe(true);
+        expect(state.allowedTokens.lookup(evmAddressBytes(token)).fees, `${token} fees`).toEqual(
+          fees,
+        );
+      }
+      expect(bytesToHex(state.feeRecipientCoinPublicKey.bytes)).toBe(
+        config.feeRecipient.coinPublicKey,
+      );
+      expect(bytesToHex(state.feeRecipientEncryptionPublicKey)).toBe(
+        config.feeRecipient.encryptionPublicKey,
+      );
+    },
+    15 * MINUTE,
+  );
+
+  it(
+    "deposit funding preflight: check user EVM account for minimum ETH and USDC balances.",
+    async () => {
+      const rpcUrl = requireEnv("EVM_RPC_URL");
+      const userAddress = requireEnv("EVM_USER_ADDRESS");
+      const erc20Address = requireEnv("ERC20_ADDRESS");
+
+      const ethBalance = await getEthBalance(rpcUrl, userAddress);
+      console.log(
+        `${userAddress}: ${fundingSummary(ethBalance, parseEther("0.01"), 18, "ETH")} (funding reserve)`,
+      );
+      expect(ethBalance, `fund ${userAddress} with >= 0.01 ETH on EVM`).toBeGreaterThanOrEqual(
+        parseEther("0.01"),
+      );
+
+      const { balance, decimals } = await getErc20Balance(rpcUrl, erc20Address, userAddress);
+      console.log(
+        `${userAddress}: ${fundingSummary(balance, parseUnits("0.1", decimals), decimals, erc20Address)}`,
+      );
+      expect(
+        balance,
+        `fund ${userAddress} with >= 0.1 of ERC20 ${erc20Address} on EVM`,
+      ).toBeGreaterThanOrEqual(parseUnits("0.1", decimals));
+    },
+    MINUTE,
+  );
+
+  // Populated by the deposit test (or DEPOSIT_REQUEST_ID) for the
+  // subsequent deposit stages.
+  let depositTransactionSignatureRequestId: RequestIdHex;
+
+  it(
+    "deposit [erc-vault contract method call]: request a deposit through the flow and read it back MPC-style",
+    async () => {
+      // A request id given in the environment resumes a prior run (for
+      // skipping steps during local development / OOM recovery).
+      if (env.DEPOSIT_REQUEST_ID) {
+        depositTransactionSignatureRequestId = env.DEPOSIT_REQUEST_ID as RequestIdHex;
+        logSkip(
+          "deposit",
+          `DEPOSIT_REQUEST_ID present in environment, skipping deposit call '${depositTransactionSignatureRequestId}'`,
+        );
+        return;
+      }
+
+      const context = await session.vaultContext();
+
+      // The sweep tx sender is the user's derived EVM account; its next nonce
+      // comes from the chain, exactly as a wallet would fetch it.
+      const evmNonce = await getTransactionNonce(
+        requireEnv("EVM_RPC_URL"),
+        requireEnv("EVM_USER_ADDRESS"),
+      );
+      // 0.1 USDC, the funding preflight's minimum, plus the fee the withdraw leg's
+      // start takes on top of that principal.
+      const amount =
+        WITHDRAW_AMOUNT + (await vaultFeesOf(context, requireEnv("ERC20_ADDRESS"))).withdraw;
+
+      depositTransactionSignatureRequestId = await startDeposit(context, { amount, evmNonce });
+      await printVaultState(context.providers.publicDataProvider, context.vaultContractAddress);
+
+      expect(depositTransactionSignatureRequestId).toMatch(/^[0-9a-f]{64}$/);
+
+      // MPC-convention verification: fetch the request record the way the
+      // response server does — through a SignetRequestResponseReader over RAW
+      // contract state. getSignatureRequest throws when the id is absent, so a
+      // returned record is itself proof the request landed on the vault ledger.
+      const record = await session
+        .responseReader(VAULT_DEPOSIT_REQUESTS_PATH)
+        .getSignatureRequest(depositTransactionSignatureRequestId);
+      expect(record.txParams.nonce).toBe(evmNonce);
+      expect(record.txParams.calldata.is_some).toBe(true);
+      expect(abiWordToUint128(calldataWordAt(record.txParams.calldata.value.words, 1))).toBe(
+        amount,
+      );
+
+      banner([
+        `Deposit request recorded on the vault ledger:`,
+        "",
+        `  request id: ${depositTransactionSignatureRequestId}`,
+        "",
+        "The response server (MIDNIGHT_SIGNER_CONTRACT_ADDRESS set) polls the",
+        "signet signer's emitted notification events and should pick it up",
+        "on its next poll — resolving it from THIS vault's ledger — and sign the EVM tx.",
+      ]);
+    },
+    5 * MINUTE,
+  );
+
+  it(
+    "golden notification: the vault's deposit emitted a decodable notification event on the signet signer",
+    async () => {
+      // Pins the SignBidirectionalNotification payload layout against a LIVE
+      // indexer, read exactly the way the MPC reads it — the signet
+      // signer's emitted Misc events through the shared event decoders.
+      // The vault's deposit cross-contract-called signBidirectional to emit
+      // this.
+      expect(depositTransactionSignatureRequestId).toBeDefined();
+      const vaultAddress = requireEnv("MIDNIGHT_VAULT_CONTRACT_ADDRESS");
+
+      const decoded = await pollSignetNotification({
+        env,
+        callerAddress: vaultAddress,
+        requestsPath: VAULT_DEPOSIT_REQUESTS_PATH,
+        requestId: depositTransactionSignatureRequestId,
+        description: `for request ${depositTransactionSignatureRequestId}`,
+      });
+
+      // callerAddress points at the vault (the contract whose authenticated
+      // ledger holds the request), and requestsPath is the event map's
+      // resolved ledger-tree path. The notification is a doorbell declaring
+      // WHICH request (the disclosed id) and WHERE to look, and the MPC reads
+      // the declared request from the vault's own authenticated ledger.
+      expect(decoded.version).toBe(1);
+      expect(decoded.callerAddress).toBe(stripHexPrefix(vaultAddress).toLowerCase());
+      expect(decoded.requestsPath).toEqual(VAULT_DEPOSIT_REQUESTS_PATH);
+
+      banner([
+        "Golden SignBidirectionalEventNotification decoded from the live indexer:",
+        "",
+        `  version:       ${String(decoded.version)}`,
+        `  callerAddress: ${decoded.callerAddress}`,
+        `  requestsPath:  [${decoded.requestsPath.join(", ")}]`,
+      ]);
+    },
+    2 * MINUTE,
+  );
+
+  // Populated by the poll step below for the broadcast step.
+  let signedDepositSweepTransaction: Transaction;
+
+  it(
+    "pollSignatureResponse: poll signet responder for sweep transaction signature response",
+    async () => {
+      expect(depositTransactionSignatureRequestId).toBeDefined();
+
+      const context = await session.vaultContext();
+      // Deposit sweeps are signed by the USER's derived account.
+      signedDepositSweepTransaction = await pollSignatureResponse(context, {
+        requestId: depositTransactionSignatureRequestId,
+        intervalMs: 1000,
+        timeoutMs: POLL_TIMEOUT_MS,
+        expectedSigner: requireEnv("EVM_USER_ADDRESS"),
+        requestsPath: VAULT_DEPOSIT_REQUESTS_PATH,
+      });
+
+      banner([
+        `MPC signed Response for request ${depositTransactionSignatureRequestId} found on the signet responder.`,
+        "",
+        `Signature: ${signedDepositSweepTransaction.serialized}`,
+      ]);
+    },
+    POLL_TIMEOUT_MS + 5 * MINUTE,
+  );
+
+  it(
+    "broadcast deposit sweep evm txn: broadcast to evm",
+    async () => {
+      expect(signedDepositSweepTransaction).toBeDefined();
+
+      const context = await session.vaultContext();
+      const receipt = await broadcastEvm(context, { transaction: signedDepositSweepTransaction });
+
+      // No-translation invariant: the transaction the EVM chain accepted
+      // carries the vault's stored calldata VERBATIM — selector || words,
+      // byte for byte as they sit on the Midnight ledger. This is the
+      // definitive end-to-end proof that nothing between the contract write
+      // and the MPC signature reordered or reinterpreted the calldata.
+      const record = await session
+        .responseReader(VAULT_DEPOSIT_REQUESTS_PATH)
+        .getSignatureRequest(depositTransactionSignatureRequestId);
+      const storedCalldata = record.txParams.calldata.value;
+      const expectedData =
+        `0x${bytesToHex(storedCalldata.selector)}` +
+        storedCalldata.words
+          .slice(0, Number(storedCalldata.noWords))
+          .map((word) => bytesToHex(word))
+          .join("");
+      const minedTx = await new JsonRpcProvider(requireEnv("EVM_RPC_URL")).getTransaction(
+        receipt.hash,
+      );
+      expect(minedTx?.data, "broadcast calldata must be the stored bytes verbatim").toBe(
+        expectedData,
+      );
+
+      banner([
+        `Deposit sweep transaction broadcast to EVM.`,
+        "",
+        `Deposit Sweep Transaction Hex: ${receipt.hash} (block ${String(receipt.blockNumber)})`,
+        "",
+        "Verified: the mined transaction's calldata is the vault-stored",
+        "selector || words, verbatim.",
+      ]);
+    },
+    1 * MINUTE,
+  );
+
+  // Populated by the poll step below for the settle step.
+  let depositSweepTransactionRespondBidirectional: RespondOutcome;
+
+  it(
+    "pollRespondBidirectional: poll signet responder for sweep transaction attestation",
+    async () => {
+      expect(depositTransactionSignatureRequestId).toBeDefined();
+
+      // The output the attestation commits to travels off chain: the poll
+      // obtains it from RESPOND_OUTPUT_SOURCE (under evm-node it traces the
+      // sweep's mined transaction for its raw output and Borsh-encodes it per
+      // the schema, under mpc-cache it downloads the MPC's cached bytes) and
+      // checks it against the posted events' attested width and hash, and their
+      // signatures against the response key the vault pinned.
+      const context = await session.vaultContext();
+      depositSweepTransactionRespondBidirectional = await pollRespondBidirectional(context, {
+        requestId: depositTransactionSignatureRequestId,
+        intervalMs: 1000,
+        timeoutMs: POLL_TIMEOUT_MS,
+        requestsPath: VAULT_DEPOSIT_REQUESTS_PATH,
+      });
+
+      // The attestation seals the round trip: it only verifies against bytes
+      // the MPC itself produced, so under evm-node a verified outcome means both
+      // sides ran the same two conversions and got the same payload.
+      const outcome = depositSweepTransactionRespondBidirectional;
+      const { mpcResponseKey } = await readVaultLedger(
+        context.providers.publicDataProvider,
+        context.vaultContractAddress,
+      );
+      expect(
+        verifyRespondBidirectionalEvent(outcome.serializedOutput, outcome.event, mpcResponseKey),
+        "the attestation must verify against the obtained output",
+      ).toBe(true);
+      expect(
+        requestIdHex(outcome.event.requestId),
+        "the verified event must name the deposit request",
+      ).toBe(depositTransactionSignatureRequestId);
+      const digest = calculateSignetAttestationDigest(
+        requestIdBytes(depositTransactionSignatureRequestId),
+        outcome.event.blockHeight,
+        outcome.event.outputKind,
+        outcome.serializedOutput,
+      );
+      expect(outcome.event.digest, "the posted digest must be the one recomputed here").toEqual(
+        digest,
+      );
+
+      banner([
+        `Found deposit RespondBidirectionalEvent (verified) on the signet responder: ` +
+          `success '${String(outcome.succeeded)}' ` +
+          `(payload 0x${bytesToHex(outcome.serializedOutput)}, ${String(outcome.serializedOutput.length)} byte(s), ` +
+          `kind ${OutputKind[outcome.event.outputKind]}, block ${String(outcome.event.blockHeight)})`,
+        "",
+        `Recomputed digest: 0x${bytesToHex(digest)}`,
+        "",
+        "The output stayed off chain: the bytes came from RESPOND_OUTPUT_SOURCE",
+        "(a debug_traceTransaction of the mined sweep transaction, Borsh-encoded",
+        "here, or the MPC's output cache) and matched the posted attestation.",
+      ]);
+    },
+    POLL_TIMEOUT_MS + 5 * MINUTE,
+  );
+
+  it(
+    "completeDeposit [erc-vault contract method call]: verify the MPC attestation in-circuit and consume the request",
+    async () => {
+      // Final leg of the deposit round trip: the request is on the vault ledger
+      // and the MPC's respond-bidirectional response is posted (previous
+      // steps). Settling re-verifies the response IN-CIRCUIT (ECDSA signature
+      // against the stored MPC response key, EVM success flag) and the caller
+      // identity, then mints
+      // shielded vault tokens and CONSUMES the request (double-claim
+      // protection). The mint is shielded so it isn't publicly observable; the
+      // request's removal from RAW ledger state is — present before, absent
+      // after — and it only happens if every in-circuit check passed.
+      expect(depositTransactionSignatureRequestId).toBeDefined();
+      expect(depositSweepTransactionRespondBidirectional).toBeDefined();
+
+      const context = await session.vaultContext();
+      const requestIndex = requestIdBytes(depositTransactionSignatureRequestId);
+
+      const isRequestOnLedger = async () => {
+        const ledger = await readVaultLedger(
+          context.providers.publicDataProvider,
+          context.vaultContractAddress,
+        );
+        return ledger.bidirectionalDepositMap.member(requestIndex);
+      };
+
+      // Rerun against a kept contract address: if a prior run already claimed
+      // this request the entry is gone and completeDeposit would reject with
+      // "Request not sent", so skip cleanly instead.
+      if (!(await isRequestOnLedger())) {
+        logSkip(
+          "completeDeposit",
+          `request ${depositTransactionSignatureRequestId} already claimed (not on the ledger)`,
+        );
+        return;
+      }
+
+      await settleDeposit(context, depositSweepTransactionRespondBidirectional);
+      await printVaultState(context.providers.publicDataProvider, context.vaultContractAddress);
+
+      expect(
+        await isRequestOnLedger(),
+        "completeDeposit must consume the request from the ledger",
+      ).toBe(false);
+
+      banner([
+        `Deposit ${depositTransactionSignatureRequestId} claimed.`,
+        "",
+        "The vault verified the MPC attestation in-circuit, minted shielded",
+        "vault tokens to the caller, and removed the request from its ledger.",
+      ]);
+    },
+    15 * MINUTE,
+  );
+
+  // ── Withdraw leg: drive the deposited 0.1 USDC back OUT of the vault to the
+  // user's derived EVM account, spending the shielded tokens completeDeposit minted.
+
+  it(
+    "withdraw funding preflight: check vault EVM account for the withdraw gas budget and ERC20 balance.",
+    async () => {
+      const rpcUrl = requireEnv("EVM_RPC_URL");
+      const vaultAddress = requireEnv("EVM_VAULT_ADDRESS");
+      const erc20Address = requireEnv("ERC20_ADDRESS");
+      const context = await session.vaultContext();
+
+      // The withdraw tx is sent FROM the vault's derived account, which pays its
+      // own gas: require the fee-cap budget the vault's gas settings stamp on a
+      // withdrawal (gas limit x max fee per gas).
+      const { gasLimit, maxFeePerGas } = vaultGasEnvelope(
+        await readVaultLedger(context.providers.publicDataProvider, context.vaultContractAddress),
+        "withdraw",
+      );
+      const gasBudget = gasLimit * maxFeePerGas;
+      const ethBalance = await getEthBalance(rpcUrl, vaultAddress);
+      console.log(
+        `${vaultAddress}: ${fundingSummary(ethBalance, gasBudget, 18, "ETH")} (maximum gas fee)`,
+      );
+      expect(
+        ethBalance,
+        `fund the vault's derived account ${vaultAddress} with >= ${formatEther(gasBudget)} ETH on EVM`,
+      ).toBeGreaterThanOrEqual(gasBudget);
+
+      const { balance, decimals } = await getErc20Balance(rpcUrl, erc20Address, vaultAddress);
+      console.log(
+        `${vaultAddress}: ${fundingSummary(balance, WITHDRAW_AMOUNT, decimals, erc20Address)}`,
+      );
+      expect(
+        balance,
+        `the vault ${vaultAddress} must hold >= 0.1 of ERC20 ${erc20Address}: did the deposit sweep land?`,
+      ).toBeGreaterThanOrEqual(WITHDRAW_AMOUNT);
+    },
+    MINUTE,
+  );
+
+  // Populated by the withdraw test (or WITHDRAW_REQUEST_ID) for the
+  // subsequent withdraw stages.
+  let withdrawTransactionSignatureRequestId: RequestIdHex;
+
+  it(
+    "withdraw [erc-vault contract method call]: burn shielded vault tokens and read the request back MPC-style",
+    async () => {
+      // A request id given in the environment resumes a prior run (for
+      // skipping steps during local development / OOM recovery).
+      if (env.WITHDRAW_REQUEST_ID) {
+        withdrawTransactionSignatureRequestId = env.WITHDRAW_REQUEST_ID as RequestIdHex;
+        logSkip(
+          "withdraw",
+          `WITHDRAW_REQUEST_ID present in environment, skipping withdraw call '${withdrawTransactionSignatureRequestId}'`,
+        );
+        return;
+      }
+
+      const context = await session.vaultContext();
+
+      // The withdraw tx sender is the VAULT's derived EVM account, at the nonce
+      // the flush assigns: the vault's next nonce, as no other vault request runs
+      // beside this one. The destination is the user's derived account, so the
+      // suite's funds cycle.
+      const vaultNonceBefore = (
+        await readVaultLedger(context.providers.publicDataProvider, context.vaultContractAddress)
+      ).vaultAccountNonce;
+
+      // The fee recipient's balance of the vault token before the start, so the
+      // fee coin shows as a delta.
+      const erc20Address = requireEnv("ERC20_ADDRESS");
+      const withdrawFee = (await vaultFeesOf(context, erc20Address)).withdraw;
+      expect(withdrawFee, "the local initialise sets a non-zero withdraw fee").toBeGreaterThan(0n);
+      const color = vaultTokenType(erc20Address, context.vaultContractAddress);
+      const recipientWallet = await feeRecipientSession.wallet();
+      const recipientBefore =
+        (await recipientWallet.facade.waitForSyncedState()).shielded.balances[color] ?? 0n;
+
+      withdrawTransactionSignatureRequestId = await startWithdraw(context, {
+        amount: WITHDRAW_AMOUNT,
+        destEvmAddress: requireEnv("EVM_USER_ADDRESS"),
+      });
+      await printVaultState(context.providers.publicDataProvider, context.vaultContractAddress);
+
+      expect(withdrawTransactionSignatureRequestId).toMatch(/^[0-9a-f]{64}$/);
+
+      // The fee coin landed in the recipient's wallet: the start minted it to the
+      // ledger's fee recipient and encrypted it to the recipient's key, so the
+      // wallet discovers it unaided.
+      await waitForFacadeState(
+        recipientWallet.facade,
+        (synced) => (synced.shielded.balances[color] ?? 0n) >= recipientBefore + withdrawFee,
+      );
+      expect(
+        (await recipientWallet.facade.waitForSyncedState()).shielded.balances[color] ?? 0n,
+        "the fee recipient's wallet must hold the withdraw fee",
+      ).toBe(recipientBefore + withdrawFee);
+
+      // MPC-convention verification: the request resolves from RAW vault state
+      // through the same reader the response server uses, recorded under the
+      // VAULT's derivation path, with contract-built calldata.
+      const record = await session
+        .responseReader(VAULT_WITHDRAW_REQUESTS_PATH)
+        .getSignatureRequest(withdrawTransactionSignatureRequestId);
+      expect(record.txParams.nonce).toBe(vaultNonceBefore);
+      expect(record.txParams.calldata.is_some).toBe(true);
+      expect(abiWordToUint128(calldataWordAt(record.txParams.calldata.value.words, 1))).toBe(
+        WITHDRAW_AMOUNT,
+      );
+      expect(record.path).toEqual(VAULT_PATH_BYTES);
+
+      banner([
+        `Withdraw request recorded on the vault ledger:`,
+        "",
+        `  request id: ${withdrawTransactionSignatureRequestId}`,
+        "",
+        "The caller's shielded vault tokens are burned. The response server",
+        "should pick the request up on its next poll and sign the EVM transfer",
+        'FROM the vault\'s derived account (path "vault").',
+      ]);
+    },
+    5 * MINUTE,
+  );
+
+  it(
+    "watch withdraw signature request: the withdraw emitted a notification event on the signet signer",
+    async () => {
+      // The same event poll the MPC runs for discovery: sendWithdraw
+      // cross-contract-called signBidirectional to emit this.
+      expect(withdrawTransactionSignatureRequestId).toBeDefined();
+      const vaultAddress = requireEnv("MIDNIGHT_VAULT_CONTRACT_ADDRESS");
+
+      const decoded = await pollSignetNotification({
+        env,
+        callerAddress: vaultAddress,
+        requestsPath: VAULT_WITHDRAW_REQUESTS_PATH,
+        requestId: withdrawTransactionSignatureRequestId,
+        description: `for withdraw request ${withdrawTransactionSignatureRequestId}`,
+      });
+
+      expect(decoded.callerAddress).toBe(stripHexPrefix(vaultAddress).toLowerCase());
+      expect(decoded.requestsPath).toEqual(VAULT_WITHDRAW_REQUESTS_PATH);
+
+      banner([
+        "Notification event observed for the withdraw request:",
+        "",
+        `  callerAddress: ${decoded.callerAddress}`,
+        `  requestsPath:  [${decoded.requestsPath.join(", ")}]`,
+      ]);
+    },
+    2 * MINUTE,
+  );
+
+  // Populated by the poll step below for the broadcast step.
+  let signedWithdrawTransaction: Transaction;
+
+  it(
+    "pollSignatureResponse: poll signet responder for withdraw transaction signature response",
+    async () => {
+      expect(withdrawTransactionSignatureRequestId).toBeDefined();
+
+      const context = await session.vaultContext();
+      // Withdraw transactions are signed by the VAULT's derived account, not the
+      // user's: verify the MPC's signature against it.
+      signedWithdrawTransaction = await pollSignatureResponse(context, {
+        requestId: withdrawTransactionSignatureRequestId,
+        intervalMs: 1000,
+        timeoutMs: POLL_TIMEOUT_MS,
+        expectedSigner: requireEnv("EVM_VAULT_ADDRESS"),
+        requestsPath: VAULT_WITHDRAW_REQUESTS_PATH,
+      });
+
+      banner([
+        `MPC signed response for withdraw request ${withdrawTransactionSignatureRequestId} found on the signet responder.`,
+        "",
+        `Signature: ${signedWithdrawTransaction.serialized}`,
+      ]);
+    },
+    POLL_TIMEOUT_MS + 5 * MINUTE,
+  );
+
+  it(
+    "broadcast withdraw evm txn: the ERC20 leaves the vault on the EVM side",
+    async () => {
+      expect(signedWithdrawTransaction).toBeDefined();
+      const rpcUrl = requireEnv("EVM_RPC_URL");
+      const erc20Address = requireEnv("ERC20_ADDRESS");
+      const destination = requireEnv("EVM_USER_ADDRESS");
+      const context = await session.vaultContext();
+
+      // Rerun tolerance: if this signed tx already mined on a previous run,
+      // re-broadcasting is an idempotent no-op, so the expected delta is 0. The
+      // delta is asserted either way, so a rerun still proves the broadcast
+      // moved nothing twice.
+      const alreadyMined =
+        signedWithdrawTransaction.hash !== null &&
+        (await isTransactionMined(rpcUrl, signedWithdrawTransaction.hash));
+      const before = await getErc20Balance(rpcUrl, erc20Address, destination);
+
+      // broadcastEvm waits for one confirmation and throws if the tx reverted.
+      const receipt = await broadcastEvm(context, { transaction: signedWithdrawTransaction });
+
+      if (alreadyMined) {
+        logSkip(
+          "withdraw balance delta",
+          `tx ${receipt.hash} had already mined; expecting a zero delta`,
+        );
+      }
+      const after = await getErc20Balance(rpcUrl, erc20Address, destination);
+      expect(
+        after.balance - before.balance,
+        `the destination ${destination} must receive the withdrawn ERC20`,
+      ).toBe(alreadyMined ? 0n : WITHDRAW_AMOUNT);
+
+      banner([
+        `Withdraw transaction mined on EVM: ${receipt.hash}`,
+        "",
+        `The vault's derived account transferred ${String(WITHDRAW_AMOUNT)} base units of`,
+        `${erc20Address} to ${destination}.`,
+      ]);
+    },
+    2 * MINUTE,
+  );
+
+  // Populated by the poll step below for the settle step.
+  let withdrawRespondBidirectional: RespondOutcome;
+
+  it(
+    "pollRespondBidirectional: poll signet responder for withdraw transaction attestation",
+    async () => {
+      expect(withdrawTransactionSignatureRequestId).toBeDefined();
+
+      const context = await session.vaultContext();
+      withdrawRespondBidirectional = await pollRespondBidirectional(context, {
+        requestId: withdrawTransactionSignatureRequestId,
+        intervalMs: 1000,
+        timeoutMs: POLL_TIMEOUT_MS,
+        requestsPath: VAULT_WITHDRAW_REQUESTS_PATH,
+      });
+
+      // Happy-day flow: the broadcast step saw the transfer mine, so the MPC
+      // must attest success (the 1-byte 0x01 result), not a failure kind.
+      expect(
+        withdrawRespondBidirectional.succeeded,
+        "the MPC must attest the withdraw transfer as succeeded",
+      ).toBe(true);
+
+      banner([
+        `Found withdraw RespondBidirectionalEvent (verified) on the signet responder: ` +
+          `success '${String(withdrawRespondBidirectional.succeeded)}' ` +
+          `(payload 0x${bytesToHex(withdrawRespondBidirectional.serializedOutput)})`,
+      ]);
+    },
+    POLL_TIMEOUT_MS + 5 * MINUTE,
+  );
+
+  it(
+    "completeWithdraw [erc-vault contract method call]: verify the MPC attestation in-circuit and settle the withdrawal",
+    async () => {
+      // Final leg of the withdraw round trip: the request is on the vault ledger
+      // and the MPC's response is posted (previous steps). Settling queues and
+      // flushes the attestation, re-checks the output against its digest
+      // IN-CIRCUIT and branches on the EVM result. This is the HAPPY path, so
+      // the withdrawal closes with NO re-mint (the surrendered value stays
+      // burned) and the request is CONSUMED (double-settle protection). The
+      // removal is publicly observable on RAW ledger state (present before,
+      // absent after) and only happens if every in-circuit check passed.
+      expect(withdrawTransactionSignatureRequestId).toBeDefined();
+      expect(withdrawRespondBidirectional).toBeDefined();
+
+      const context = await session.vaultContext();
+      const requestIndex = requestIdBytes(withdrawTransactionSignatureRequestId);
+      const isRequestOnLedger = async () =>
+        (
+          await readVaultLedger(context.providers.publicDataProvider, context.vaultContractAddress)
+        ).bidirectionalWithdrawMap.member(requestIndex);
+
+      // Rerun against a kept contract address: if a prior run already settled
+      // this request the entry is gone and completeWithdraw would reject with
+      // "Request not sent", so skip cleanly instead.
+      if (!(await isRequestOnLedger())) {
+        logSkip(
+          "completeWithdraw",
+          `withdrawal ${withdrawTransactionSignatureRequestId} already settled (not on the ledger)`,
+        );
+        return;
+      }
+
+      await settleWithdraw(context, withdrawRespondBidirectional);
+      await printVaultState(context.providers.publicDataProvider, context.vaultContractAddress);
+
+      expect(
+        await isRequestOnLedger(),
+        "completeWithdraw must consume the request from the ledger",
+      ).toBe(false);
+
+      banner([
+        `Withdraw ${withdrawTransactionSignatureRequestId} settled (success, no re-mint).`,
+        "",
+        "The vault verified the MPC attestation in-circuit, closed the",
+        "withdrawal, and removed the request from its ledger.",
+      ]);
+    },
+    15 * MINUTE,
+  );
+});

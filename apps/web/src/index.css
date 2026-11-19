@@ -1,0 +1,268 @@
+@import "tailwindcss";
+@import "@fontsource/shippori-mincho/500.css";
+@import "@fontsource/shippori-mincho/600.css";
+@import "@fontsource/shippori-mincho/700.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+/*
+  Kinko's face: warm paper, black ink, and one vermilion, the colour of a
+  hanko seal. Headlines are set in a Mincho serif, the interface in a clean
+  sans with tabular figures for money, and hashes in a mono.
+
+  Every colour is a token. Dark mode ("sumi") redefines the same tokens, so a
+  component never chooses a colour per theme. Text tokens are checked against
+  their grounds for WCAG AA (4.5:1 body, 3:1 large text and controls).
+*/
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --color-paper: #f7f3ec;
+  --color-surface: #fffdf9;
+  --color-surface-2: #f2ece2;
+  --color-line: #e3dacd;
+  --color-line-strong: #cbbfad;
+
+  --color-ink: #1b1815;
+  --color-ink-2: #4c453e;
+  --color-ink-3: #675e54;
+
+  --color-shu: #c23a22;
+  --color-shu-ink: #a52f19;
+  --color-shu-soft: #f7e3dc;
+  --color-on-shu: #ffffff;
+
+  --color-ok: #2c6a4c;
+  --color-ok-soft: #e1efe6;
+  --color-warn: #845400;
+  --color-warn-soft: #f6ecd6;
+  --color-bad: #a2231b;
+  --color-bad-soft: #f8e0dd;
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN", Georgia, serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Code", monospace;
+}
+
+[data-theme="dark"] {
+  --color-paper: #121115;
+  --color-surface: #1a191e;
+  --color-surface-2: #232128;
+  --color-line: #312e36;
+  --color-line-strong: #46424c;
+
+  --color-ink: #f3eee7;
+  --color-ink-2: #c4bcb1;
+  --color-ink-3: #9d958a;
+
+  --color-shu: #ff6b4f;
+  --color-shu-ink: #ff8a72;
+  --color-shu-soft: #3a1d18;
+  --color-on-shu: #1a0b07;
+
+  --color-ok: #7ccaa1;
+  --color-ok-soft: #17291f;
+  --color-warn: #e8b45a;
+  --color-warn-soft: #2e2413;
+  --color-bad: #ff8b80;
+  --color-bad-soft: #36191a;
+}
+
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  overflow-wrap: break-word;
+}
+
+/* A faint paper grain on the ground: two offset dot fields, no image. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+  background-image:
+    radial-gradient(rgba(120, 96, 60, 0.05) 1px, transparent 1px),
+    radial-gradient(rgba(120, 96, 60, 0.035) 1px, transparent 1px);
+  background-size:
+    22px 22px,
+    31px 31px;
+  background-position:
+    0 0,
+    11px 15px;
+}
+
+[data-theme="dark"] body::before {
+  opacity: 0.35;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    radial-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Native selects keep a visible chevron after their default arrow is removed. */
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a8178' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* Grid tracks never grow past the screen because of one long hash inside them. */
+.grid > * {
+  min-width: 0;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-shu);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: var(--color-shu-soft);
+  color: var(--color-ink);
+}
+
+/* A seal-red rule under a section label, drawn like a brush stroke. */
+.rule-shu {
+  display: inline-block;
+  width: 28px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-shu);
+}
+
+/*
+  NightKit's connect button and wallet list, in Kinko's colours. NightKit
+  exposes these --nk-* variables for exactly this. The vault's own iframe is
+  never styled: it must stay plainly visible for its approval checks.
+*/
+/* NightKit injects its stylesheet at runtime, after this one, so these rules
+   carry one more class of specificity than its own. */
+html .nk-root,
+html .nk-root[data-nk-theme="light"],
+html .nk-root[data-nk-theme="dark"],
+html .nk-root[data-nk-theme="auto"] {
+  --nk-surface: var(--color-surface);
+  --nk-panel: var(--color-surface-2);
+  --nk-border: var(--color-line);
+  --nk-border-strong: var(--color-line-strong);
+  --nk-text: var(--color-ink);
+  --nk-text-dim: var(--color-ink-2);
+  --nk-text-faint: var(--color-ink-3);
+  --nk-accent: var(--color-shu);
+  --nk-accent-hi: var(--color-shu-ink);
+  --nk-danger: var(--color-bad);
+  --nk-live: var(--color-ok);
+  --nk-cta: var(--color-shu);
+  --nk-cta-ink: var(--color-on-shu);
+  --nk-sans: var(--font-sans);
+  --nk-mono: var(--font-mono);
+}
+
+html .nk-root .nk-btn,
+html .nk-root .nk-chip {
+  min-height: 44px;
+  border-radius: 12px;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  font-size: 14px;
+}
+
+html .nk-root .nk-modal,
+html .nk-root .nk-menu,
+html .nk-root .nk-item,
+html .nk-root .nk-wallet {
+  border-radius: 14px;
+}
+
+@keyframes kinko-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+
+.kinko-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.kinko-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--color-shu), transparent);
+  opacity: 0.55;
+  animation: kinko-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes kinko-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.kinko-pulse {
+  animation: kinko-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

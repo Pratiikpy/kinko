@@ -1,0 +1,33 @@
+{
+  "name": "@sig-net/midnight-examples-lib",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runtime plumbing the examples share and @sig-net/midnight-contract-deploy does not publish: split-deploy transaction builders, midnight-js provider adapters, repo .env readers and shielded wallet transfers. Kept ruthlessly small.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@effect/platform-node": "0.108.2",
+    "@midnight-ntwrk/compact-js": "3.0.0",
+    "@midnight-ntwrk/compact-js-node": "3.0.0",
+    "@midnight-ntwrk/midnight-js": "5.0.0",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "5.0.0",
+    "@midnight-ntwrk/platform-js": "3.0.0",
+    "@midnightntwrk/ledger-v9": "1.0.1",
+    "@midnightntwrk/wallet-sdk-facade": "5.0.0",
+    "@sig-net/midnight-contract-deploy": "0.26.0-rc.15",
+    "effect": "3.22.4",
+    "ethers": "^6.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2",
+    "vite": "8.1.4",
+    "vitest": "^5.0.0"
+  }
+}

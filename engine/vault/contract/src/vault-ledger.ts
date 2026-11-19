@@ -1,0 +1,242 @@
+// Vault ledger reads: raw contract state from a public data provider, decoded
+// with the generated `ledger()`. Takes the provider and address, so a browser
+// client, the deploy tooling and a read-only script all drive it the same way.
+
+import { ContractState } from "@midnight-ntwrk/compact-runtime";
+import type { PublicDataProvider } from "@midnight-ntwrk/midnight-js/types";
+import type { CoinPublicKey, EncPublicKey } from "@midnight-ntwrk/midnight-js-protocol/v9";
+import { bytesToHex, hexToBytes, toSignBidirectionalEventIndex } from "@sig-net/midnight";
+
+import { ledger, SupplyCounter, type TokenFees } from "./managed/erc20-vault/contract/index.js";
+
+/** The decoded vault public ledger state, as the generated `ledger()` returns it. */
+export type VaultLedgerState = ReturnType<typeof ledger>;
+
+/**
+ * Read + decode the vault's public ledger state.
+ *
+ * @param publicDataProvider - The provider to query raw contract state through.
+ * @param vaultContractAddress - The deployed vault contract address.
+ * @returns The decoded ledger state.
+ * @throws {Error} If no contract state exists at `vaultContractAddress`.
+ */
+export async function readVaultLedger(
+  publicDataProvider: PublicDataProvider,
+  vaultContractAddress: string,
+): Promise<VaultLedgerState> {
+  const read = await publicDataProvider.queryContractState(vaultContractAddress);
+  if (!read) {
+    throw new Error(`no contract state found at ${vaultContractAddress} — is the address right?`);
+  }
+  return ledger(read.contractState.deserialize({ v9: ContractState }).data);
+}
+
+/**
+ * Read and print the vault's public ledger state: initialisation status, the
+ * configured vault EVM address, the pinned EVM chain, the vault EVM account's
+ * next nonce, the ERC20s the vault allows, and the pending signet signature
+ * requests of each action's map. No
+ * proving keys or transactions involved.
+ *
+ * @param publicDataProvider - The provider to query raw contract state through.
+ * @param vaultContractAddress - The deployed vault contract address, as bare hex.
+ * @throws {Error} If `vaultContractAddress` is not hex, or no contract state
+ *   exists there.
+ */
+export async function printVaultState(
+  publicDataProvider: PublicDataProvider,
+  vaultContractAddress: string,
+): Promise<void> {
+  // Re-encode the address through bytes before it reaches the log: hexToBytes
+  // rejects anything that is not hex, so an env secret misrouted into the
+  // address variable is never printed.
+  const address = bytesToHex(hexToBytes(vaultContractAddress));
+  const state = await readVaultLedger(publicDataProvider, address);
+  console.log(`vault contract:    ${address}`);
+  console.log(`initialised:       ${String(state.initialised)}`);
+  console.log(`vault EVM address: 0x${bytesToHex(state.vaultEvmAddress)}`);
+  console.log(`EVM chain id:      ${String(state.evmChainId)}`);
+  console.log(`vault EVM nonce:   ${String(state.vaultAccountNonce)}`);
+  console.log(`fee recipient:     coin ${bytesToHex(state.feeRecipientCoinPublicKey.bytes)}`);
+  console.log(`                   enc  ${bytesToHex(state.feeRecipientEncryptionPublicKey)}`);
+  console.log(`allowed ERC20s:    ${String(state.allowedTokens.size())}`);
+  for (const [token, { fees }] of state.allowedTokens) {
+    console.log(
+      `- 0x${bytesToHex(token)} fees: withdraw ${String(fees.withdraw)}, swap ${String(fees.swap)}, ` +
+        `supply ${String(fees.supply)}, redeem ${String(fees.redeem)}`,
+    );
+    const supply = vaultTokenSupply(state, token);
+    console.log(
+      `                   supply: minted ${String(supply.minted)}, burned ${String(supply.burned)}, ` +
+        `circulating ${String(supply.circulating)}, fees minted ${String(supply.feesMinted)}`,
+    );
+  }
+
+  printRequestMap("deposit", state.bidirectionalDepositMap);
+  printRequestMap("withdraw", state.bidirectionalWithdrawMap);
+  printRequestMap("approve", state.bidirectionalApproveMap);
+  printRequestMap("nonce replacement", state.bidirectionalReplaceNonceMap);
+  printRequestMap("swap", state.bidirectionalSwapMap);
+  printRequestMap("supply", state.bidirectionalSupplyMap);
+  printRequestMap("redeem", state.bidirectionalRedeemMap);
+}
+
+/**
+ * Print one request map's pending entries under a heading naming the kinds it
+ * holds.
+ *
+ * @param kinds - The request kinds recorded in this map.
+ * @param map - The map to enumerate.
+ */
+function printRequestMap(
+  kinds: string,
+  map: Parameters<typeof toSignBidirectionalEventIndex>[0],
+): void {
+  const index = toSignBidirectionalEventIndex(map);
+  console.log(`pending ${kinds} signature requests: ${String(index.size)}`);
+  for (const requestIdHex of index.keys()) {
+    console.log(`- ${requestIdHex}`);
+  }
+}
+
+/** The transaction kinds the vault signs with its own EVM account. */
+export type VaultGasKind = "withdraw" | "approve" | "swap" | "supply" | "redeem";
+
+/** The EIP-1559 gas envelope of one vault-signed transaction. */
+export interface VaultGasEnvelope {
+  readonly gasLimit: bigint;
+  readonly maxFeePerGas: bigint;
+  readonly maxPriorityFeePerGas: bigint;
+}
+
+/**
+ * The gas envelope a `kind` request's start circuit copies into its arguments, read
+ * from the ledger.
+ *
+ * @param state - The decoded vault ledger state.
+ * @param kind - The vault-signed operation.
+ * @returns The gas limit for that kind plus the fee ceiling and tip.
+ */
+export function vaultGasEnvelope(state: VaultLedgerState, kind: VaultGasKind): VaultGasEnvelope {
+  return {
+    gasLimit: state.vaultGasLimits[kind],
+    maxFeePerGas: state.vaultMaxFeePerGas,
+    maxPriorityFeePerGas: state.vaultMaxPriorityFeePerGas,
+  };
+}
+
+/**
+ * The flat per-action fees the ledger holds for an ERC20's vault coin, which a start
+ * circuit adds to the surrendered principal and takes from the coin.
+ *
+ * @param state - The decoded vault ledger state.
+ * @param erc20Address - The ERC20 the vault coin stands for, as 20 bytes.
+ * @returns That token's fees, in its base units.
+ * @throws {Error} If the vault does not allow the ERC20.
+ */
+export function vaultTokenFees(state: VaultLedgerState, erc20Address: Uint8Array): TokenFees {
+  if (!state.allowedTokens.member(erc20Address)) {
+    throw new Error(`the vault does not allow ERC20 0x${bytesToHex(erc20Address)}`);
+  }
+  return state.allowedTokens.lookup(erc20Address).fees;
+}
+
+/**
+ * The coin-to-encryption key mapping a fee-charging call passes midnight-js, so the
+ * fee coin's ciphertext is encrypted to the recipient wallet the ledger names and that
+ * wallet discovers the coin.
+ *
+ * @param state - The decoded vault ledger state.
+ * @returns One entry: the fee recipient's coin public key to its encryption public key.
+ */
+export function feeRecipientEncryptionMapping(
+  state: VaultLedgerState,
+): ReadonlyMap<CoinPublicKey, EncPublicKey> {
+  return new Map([
+    [
+      bytesToHex(state.feeRecipientCoinPublicKey.bytes),
+      bytesToHex(state.feeRecipientEncryptionPublicKey),
+    ],
+  ]);
+}
+
+/** The vault's supply accounting for one ERC20's vault coin, in the ERC20's base units. */
+export interface VaultTokenSupply {
+  /** Everything minted to users: deposits, swap, supply and redeem results, and refund re-mints. */
+  readonly minted: bigint;
+  /** The principal every start circuit surrendered, fees excluded. */
+  readonly burned: bigint;
+  /** What was minted to the fee recipient, kept apart from `minted`. */
+  readonly feesMinted: bigint;
+  /** `minted - burned`: the vault coins in circulation, fee coins included. */
+  readonly circulating: bigint;
+}
+
+/** The bits one supply counter limb holds: the contract adds an amount as four 16-bit limbs. */
+const SUPPLY_LIMB_BITS = 16n;
+
+/** The limbs the contract splits an amount into, one Counter each. */
+const SUPPLY_LIMBS = 4n;
+
+/**
+ * One supply counter of an ERC20, summed back from its limb Counters.
+ *
+ * @param state - The decoded vault ledger state.
+ * @param erc20Address - The ERC20 the vault coin stands for, as 20 bytes.
+ * @param counter - Which supply counter to read.
+ * @returns The counter's total, in the ERC20's base units.
+ */
+function readSupplyCounter(
+  state: VaultLedgerState,
+  erc20Address: Uint8Array,
+  counter: SupplyCounter,
+): bigint {
+  let total = 0n;
+  for (let limb = 0n; limb < SUPPLY_LIMBS; limb += 1n) {
+    const key = { token: erc20Address, counter, limb };
+    total += state.supplyCounters.lookup(key).read() << (SUPPLY_LIMB_BITS * limb);
+  }
+  return total;
+}
+
+/**
+ * The supply of every ERC20 the vault allows, keyed by the ERC20's address as lowercase hex
+ * without a prefix.
+ *
+ * @param state - The decoded vault ledger state.
+ * @returns Each allowed ERC20's minted, burned and fee-minted totals and circulating supply.
+ */
+export function vaultSupplies(state: VaultLedgerState): Map<string, VaultTokenSupply> {
+  const supplies = new Map<string, VaultTokenSupply>();
+  for (const [token] of state.allowedTokens) {
+    supplies.set(bytesToHex(token), vaultTokenSupply(state, token));
+  }
+  return supplies;
+}
+
+/**
+ * What the vault has minted and burned of an ERC20's vault coin, read from the public
+ * ledger: `circulating` is the coin's supply, which the vault's balance of that ERC20 on
+ * the EVM chain backs one to one.
+ *
+ * @param state - The decoded vault ledger state.
+ * @param erc20Address - The ERC20 the vault coin stands for, as 20 bytes.
+ * @returns The token's minted, burned and fee-minted totals and its circulating supply.
+ * @throws {Error} If the vault does not allow the ERC20 (only allowed ERC20s have counters).
+ */
+export function vaultTokenSupply(
+  state: VaultLedgerState,
+  erc20Address: Uint8Array,
+): VaultTokenSupply {
+  if (!state.allowedTokens.member(erc20Address)) {
+    throw new Error(`the vault does not allow ERC20 0x${bytesToHex(erc20Address)}`);
+  }
+  const minted = readSupplyCounter(state, erc20Address, SupplyCounter.minted);
+  const burned = readSupplyCounter(state, erc20Address, SupplyCounter.burned);
+  return {
+    minted,
+    burned,
+    feesMinted: readSupplyCounter(state, erc20Address, SupplyCounter.feesMinted),
+    circulating: minted - burned,
+  };
+}

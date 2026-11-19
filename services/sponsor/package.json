@@ -1,0 +1,29 @@
+{
+  "name": "@kinko/sponsor",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Kinko's fee sponsor: pays the DUST for a card paying an invoice, so a card holder needs no wallet at checkout. Pays only for allowlisted Kinko calls, under a per-transaction cap, a total budget and a per-client rate limit.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "tsx src/main.ts",
+    "fund": "tsx src/fund.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kinko/card": "workspace:*",
+    "@midnightntwrk/ledger-v9": "1.0.1",
+    "@midnightntwrk/wallet-sdk-facade": "5.0.0",
+    "@sig-net/midnight-contract-deploy": "0.26.0-rc.15"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

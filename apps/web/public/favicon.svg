@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kinko">
+  <rect x="2" y="2" width="60" height="60" rx="13" fill="#c23a22"/>
+  <rect x="6.5" y="6.5" width="51" height="51" rx="9" fill="none" stroke="#fbf5ec" stroke-width="1.6"/>
+  <g fill="none" stroke="#fbf5ec" stroke-width="4.2" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M14.5 27 L32 12.5 L49.5 27"/>
+    <path d="M23 30.5 H41"/>
+    <path d="M18 39 H46"/>
+    <path d="M32 30.5 V51"/>
+    <path d="M21 42.5 L23.5 46"/>
+    <path d="M43 42.5 L40.5 46"/>
+    <path d="M14.5 51.5 H49.5"/>
+  </g>
+</svg>

@@ -1,0 +1,124 @@
+// Kinko gift cards: private bearer notes in KUSD.
+//
+// A gift card is a shielded coin sent to a one-time key derived from the
+// card's own secret. Whoever holds the secret rebuilds the key and spends the
+// coin. That is what "bearer" means, and it is how shielded notes work.
+//
+// The contract does NOT hold the money. A custodied coin lives in public
+// ledger state, so its value is public and every redemption shows up as a
+// delta (500 -> 750 -> 875 -> redeem 137 -> 738). No contract can avoid that
+// while holding funds: the leak is the custody, not the code.
+//
+// What is left is a registry: a commitment proving a card was issued by a
+// known issuer, in a stated asset, with no amount, no custody and no delta to
+// watch. Double spending is prevented by zswap itself, because the coin can
+// be spent once, which is stronger than a nullifier set this contract would
+// have to maintain.
+//
+// The trade, stated plainly: no on-chain PIN and no freezing a lost card,
+// because the contract holds nothing to withhold. A card is cash. Where a PIN
+// matters more than bearer convenience, use a Kinko PIN card: its keys need
+// the PIN as well as the card, and its owner freezes it by moving the balance.
+
+pragma language_version >= 0.23;
+
+import CompactStandardLibrary;
+
+circuit domain_card():   Bytes<32> { return pad(32, "kinko:gift:card:v1"); }
+circuit domain_issuer(): Bytes<32> { return pad(32, "kinko:gift:issuer:v1"); }
+
+// The asset the card's coin is in. Same ordering as kinko_pay's TokenKind.
+export enum TokenKind {
+  NATIVE,
+  KUSD
+}
+
+// Issued card commitments. Membership proves a card came from the issuer
+// whose public id was used to compute it. It says nothing about value, and
+// nothing about whether the card has been spent: that lives in zswap.
+export ledger cards: Set<Bytes<32>>;
+
+// Cards an issuer has marked void. Advisory only: a voided card whose coin is
+// unspent can still be spent, because the contract has no power over a coin
+// it does not hold. It lets an issuer publish "this batch was printed in
+// error", and a recipient check that before accepting a card.
+export ledger voided: Set<Bytes<32>>;
+
+export ledger issued: Counter;
+
+// ---------------------------------------------------------------------------
+// Witnesses
+// ---------------------------------------------------------------------------
+
+// The card secret. This is the card: it derives the coin's spending key, so it
+// goes to the recipient and to nobody else.
+witness card_secret(): Bytes<32>;
+
+// The issuer's secret. Its hash is the issuer's public id, which recipients
+// use to verify cards. Only the secret can issue or void under that id, so a
+// recipient who knows the id cannot register cards in the issuer's name.
+witness issuer_secret(): Bytes<32>;
+
+// ---------------------------------------------------------------------------
+// Derivations, exported for the app
+// ---------------------------------------------------------------------------
+
+export pure circuit issuer_id(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([domain_issuer(), secret]);
+}
+
+// A card commitment.
+//
+// Binds the card secret to its issuer and asset. Deliberately does NOT bind
+// the amount: the amount is the coin's value, which only the holder can see,
+// and committing to it here would put a hash of it on chain for a dictionary
+// attack over plausible denominations.
+export pure circuit card_commitment(issuer: Bytes<32>, token: TokenKind, secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([
+    domain_card(),
+    issuer,
+    persistentHash<Uint<8>>(token as Uint<8>),
+    secret
+  ]);
+}
+
+circuit own_card(token: TokenKind): Bytes<32> {
+  return card_commitment(issuer_id(issuer_secret()), token, card_secret());
+}
+
+// ---------------------------------------------------------------------------
+// Circuits
+// ---------------------------------------------------------------------------
+
+// Register a card. Called once by the issuer. The coin is sent to the card's
+// derived key by the issuer's wallet, outside this contract, so no value
+// passes through here and none of it is observable.
+export circuit issue(token: TokenKind): Bytes<32> {
+  const commitment = disclose(own_card(token));
+  assert(!cards.member(commitment), "card already issued");
+
+  cards.insert(commitment);
+  issued.increment(1);
+  return commitment;
+}
+
+// Mark a card void. Issuer only: the commitment is rebuilt from the issuer
+// secret, which a recipient never holds.
+export circuit void_card(token: TokenKind): [] {
+  const commitment = disclose(own_card(token));
+  assert(cards.member(commitment), "unknown card");
+  assert(!voided.member(commitment), "card already void");
+  voided.insert(commitment);
+}
+
+// ---------------------------------------------------------------------------
+// Public checks
+// ---------------------------------------------------------------------------
+
+export circuit card_issued(commitment: Bytes<32>): Boolean {
+  return cards.member(disclose(commitment));
+}
+
+export circuit card_voided(commitment: Bytes<32>): Boolean {
+  return voided.member(disclose(commitment));
+}

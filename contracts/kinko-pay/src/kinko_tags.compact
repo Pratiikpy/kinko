@@ -1,0 +1,163 @@
+// Kinko tags: pay @alice instead of sharing an address.
+//
+// A tag is a short public name mapped to a pair of shielded receiving keys:
+// the zswap coin public key a coin is sent to, and the encryption public key
+// the recipient's wallet uses to find it. A payer resolves the tag by reading
+// this contract's public ledger state and sends a shielded coin to the keys.
+//
+// What this reveals, stated plainly:
+//
+//   - The keys behind a tag are public. Anyone can read that @alice receives
+//     at (coin key, encryption key). That is the point of a tag, and it is the
+//     same exposure as posting an address.
+//   - Payments to those keys stay unlinkable on the ledger. A shielded coin
+//     does not show its recipient, value or asset, so the ledger never shows
+//     that a payment went to @alice. Only the payer and Alice know.
+//   - Registering, updating, transferring and releasing a tag are public
+//     events on that tag. The owner behind them is not: ownership is a hash of
+//     a secret and the tag name, so one person's tags cannot be linked through
+//     their owner records.
+//
+// Names are normalised off-chain (lowercase, the "@" dropped) and checked
+// here: only a-z, 0-9 and underscore, 3 to 20 characters, right-padded with
+// zero bytes to 32. A name the app would never produce, such as "Alice" or
+// "al\0ice", cannot be registered at all, so no lookalike can sit beside a
+// real tag.
+
+pragma language_version >= 0.23;
+
+import CompactStandardLibrary;
+
+circuit domain_tag_owner(): Bytes<32> { return pad(32, "kinko:tag:owner:v1"); }
+
+// Who receives under a tag, and who controls it.
+export struct TagRecord {
+  coin_pk: ZswapCoinPublicKey,
+  enc_pk: Bytes<32>,
+  owner: Bytes<32>
+}
+
+// tag => record. Resolution is a read of this map.
+export ledger tags: Map<Bytes<32>, TagRecord>;
+
+// The tag owner's secret. Never disclosed; only its tag-bound hash is stored.
+witness tag_secret(): Bytes<32>;
+
+// ---------------------------------------------------------------------------
+// Derivations, exported for the app
+// ---------------------------------------------------------------------------
+
+// The owner record for `tag` under `secret`. The tag is in the pre-image, so
+// one secret used for several tags still yields unrelated owner records.
+export pure circuit tag_owner(tag: Bytes<32>, secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([domain_tag_owner(), tag, secret]);
+}
+
+// One byte of a canonical tag: a-z, 0-9, underscore, or zero padding.
+circuit tag_byte_allowed(b: Uint<8>): Boolean {
+  return (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 95 || b == 0;
+}
+
+// Whether `tag` is canonical: allowed bytes only, zero padding only at the
+// end, at least 3 and at most 20 characters.
+export pure circuit tag_is_canonical(tag: Bytes<32>): Boolean {
+  const v = tag as Vector<32, Uint<8>>;
+  // Fold state: [every byte allowed, padding has started, no character after
+  // padding started].
+  const scan = fold(
+    (acc: Vector<3, Boolean>, b: Uint<8>): Vector<3, Boolean> => [
+      acc[0] && tag_byte_allowed(b),
+      acc[1] || b == 0,
+      acc[2] && !(acc[1] && b != 0)
+    ],
+    [true, false, true],
+    v
+  );
+  return scan[0] && scan[2] && v[2] != 0 && v[20] == 0;
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+circuit keys_present(coin_pk: ZswapCoinPublicKey, enc_pk: Bytes<32>): Boolean {
+  return coin_pk.bytes != default<Bytes<32>> && enc_pk != default<Bytes<32>>;
+}
+
+// Look up a tag and prove the caller owns it. Returns the record.
+circuit owned_record(tag: Bytes<32>): TagRecord {
+  assert(tags.member(tag), "unknown tag");
+  const record = tags.lookup(tag);
+  assert(tag_owner(tag, tag_secret()) == record.owner, "not the tag owner");
+  return record;
+}
+
+// ---------------------------------------------------------------------------
+// Circuits
+// ---------------------------------------------------------------------------
+
+// Claim an unused tag and name the keys that receive under it.
+export circuit register_tag(
+  tag: Bytes<32>,
+  coin_pk: ZswapCoinPublicKey,
+  enc_pk: Bytes<32>
+): [] {
+  const name = disclose(tag);
+  assert(name != default<Bytes<32>>, "tag is empty");
+  assert(tag_is_canonical(name), "tag is not in canonical form");
+  assert(!tags.member(name), "tag is already registered");
+  assert(disclose(keys_present(coin_pk, enc_pk)), "receiving keys are empty");
+
+  tags.insert(name, disclose(TagRecord {
+    coin_pk: coin_pk,
+    enc_pk: enc_pk,
+    owner: tag_owner(name, tag_secret())
+  }));
+}
+
+// Point a tag at new receiving keys, for example after moving wallets.
+export circuit update_tag_keys(
+  tag: Bytes<32>,
+  coin_pk: ZswapCoinPublicKey,
+  enc_pk: Bytes<32>
+): [] {
+  const name = disclose(tag);
+  const record = owned_record(name);
+  assert(disclose(keys_present(coin_pk, enc_pk)), "receiving keys are empty");
+
+  tags.insert(name, disclose(TagRecord {
+    coin_pk: coin_pk,
+    enc_pk: enc_pk,
+    owner: record.owner
+  }));
+}
+
+// Hand a tag to someone else. The new owner computes `new_owner` with
+// tag_owner from their own secret and supplies their receiving keys, which
+// replace the old ones in the same step: no payment to the tag can land with
+// the previous owner once the transfer is on chain.
+export circuit transfer_tag(
+  tag: Bytes<32>,
+  new_owner: Bytes<32>,
+  coin_pk: ZswapCoinPublicKey,
+  enc_pk: Bytes<32>
+): [] {
+  const name = disclose(tag);
+  owned_record(name);
+  assert(disclose(new_owner) != default<Bytes<32>>, "new owner is empty");
+  assert(disclose(keys_present(coin_pk, enc_pk)), "receiving keys are empty");
+
+  tags.insert(name, disclose(TagRecord {
+    coin_pk: coin_pk,
+    enc_pk: enc_pk,
+    owner: new_owner
+  }));
+}
+
+// Give a tag up. It becomes available to anyone, and a payment resolving it
+// afterwards goes to whoever registers it next, so the app warns before this.
+export circuit release_tag(tag: Bytes<32>): [] {
+  const name = disclose(tag);
+  owned_record(name);
+  tags.remove(name);
+}

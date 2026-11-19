@@ -1,0 +1,26 @@
+{
+  "name": "@kinko/snapshots",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Publishes the chain's shielded commitment tree at recent events, so a brand-new card can start its wallet from where it was made instead of replaying every event the chain has ever recorded.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "tsx src/main.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kinko/card": "workspace:*",
+    "@sig-net/midnight-contract-deploy": "0.26.0-rc.15"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

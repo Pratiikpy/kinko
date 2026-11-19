@@ -1,0 +1,31 @@
+{
+  "name": "@kinko/cli",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Kinko's command line for merchants: create an invoice link, poll its status and write a manifest.",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "bin": {
+    "kinko": "./src/bin.ts"
+  },
+  "scripts": {
+    "start": "node --experimental-transform-types --disable-warning=ExperimentalWarning src/bin.ts",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kinko/node": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  },
+  "exports": {
+    "./cli": "./src/cli.ts",
+    "./io": "./src/io.ts"
+  }
+}

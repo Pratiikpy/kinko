@@ -1,0 +1,28 @@
+{
+  "name": "@kinko/kinko-disclosure",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Kinko examiner disclosure: sealed payment statements opened case by case on two of three keyholder approvals, with every disclosure logged on chain.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./managed/*": "./src/managed/*"
+  },
+  "scripts": {
+    "compile": "COMPACT_PATH=../../node_modules compact compile +0.36.0 --skip-zk src/kinko_disclosure.compact src/managed/kinko_disclosure",
+    "compile:zk": "COMPACT_PATH=../../node_modules compact compile +0.36.0 src/kinko_disclosure.compact src/managed/kinko_disclosure",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.21.0"
+  },
+  "devDependencies": {
+    "@midnightntwrk/onchain-runtime-v4": "4.0.1",
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

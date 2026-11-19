@@ -1,0 +1,200 @@
+// `startWithdraw` then `sendWithdraw`: surrender a shielded vault coin worth the
+// amount plus the withdraw fee (the contract burns it and mints the fee to the fee
+// recipient), flush the queued withdrawal, which assigns it the vault account's
+// next EVM nonce, and record its SignBidirectionalEvent in the vault's
+// bidirectionalWithdrawMap. It asks the MPC to sign an EVM `transfer(destination,
+// amount)` on the ERC20, sent from the VAULT's derived address (path "vault"). The
+// request id is recomputed off-chain with the library's TS twin of the request-id
+// circuit and asserted against the ledger map index before it is returned. The settle
+// side lives in complete-withdraw.ts.
+import { createCallTxOptions, submitCallTx } from "@midnight-ntwrk/midnight-js/contracts";
+import {
+  calculateRequestId,
+  evmAddressAbiWord,
+  hexToBytes,
+  numericAbiWord,
+  type RequestIdHex,
+  requestIdHex,
+  type SignBidirectionalEvent,
+  SIGNET_DEFAULT_KEY_VERSION,
+  stripHexPrefix,
+  toSignBidirectionalEventIndex,
+  TxParamType,
+} from "@sig-net/midnight";
+import {
+  Action,
+  evmAddressBytes,
+  feeRecipientEncryptionMapping,
+  flushedRequestIndex,
+  newInputIndex,
+  readVaultLedger,
+  VAULT_PATH_BYTES,
+  VAULT_PRIVATE_STATE_ID,
+  vaultTokenFees,
+} from "@sig-net/midnight-examples-erc20-vault-contract";
+import { vaultCompiledContract } from "@sig-net/midnight-examples-erc20-vault-deploy";
+
+import { logEvmFeeCap, logTokenAmount } from "../evm-logging.ts";
+import { ERC20_TRANSFER_SELECTOR } from "../evm-transfer.ts";
+import { TRANSFER_RESULT_MPC_ROUTING } from "../mpc-routing.ts";
+import type { VaultContext } from "../vault-context.ts";
+import { vaultTokenType } from "../vault-token.ts";
+import { flushUntil } from "./vault-queue.ts";
+
+/** Options for {@link startWithdraw}. */
+export interface StartWithdrawOptions {
+  /** Withdraw amount in ERC20 base units. */
+  readonly amount: bigint;
+  /** Destination EVM address (20-byte 0x hex) receiving the ERC20. */
+  readonly destEvmAddress: string;
+}
+
+/**
+ * Queue a withdrawal with `startWithdraw` under a fresh input index, flush it
+ * into the output buffer, send it with `sendWithdraw`, and return the resulting
+ * request id.
+ *
+ * Surrenders a shielded vault coin of exactly `amount` plus the token's
+ * withdraw fee read from the ledger: its colour comes from the compiled
+ * `vaultTokenDomainSeparator` circuit plus the runtime's `rawTokenType`, and
+ * midnight-js funds its value from the caller's shielded balance when it
+ * balances the call. The call carries the fee recipient's encryption key, so
+ * the recipient's wallet discovers the fee coin. The entry pins an ownership commitment of
+ * this wallet's identity secret, so only this caller can complete the
+ * withdrawal and take any re-mint. The caller chooses only the withdrawal
+ * itself: the vault's account signs, so the contract copies the vault's gas
+ * settings at start and the flush assigns the nonce. The expected record is
+ * reconstructed off-chain from the flushed entry and its stored arguments, its
+ * id computed with the library's `calculateRequestId` TS twin, and asserted
+ * present as a ledger map index after the send.
+ *
+ * @param context - The flow context.
+ * @param options - The withdraw arguments.
+ * @returns The request id as 64-char lowercase hex.
+ * @throws {Error} If an option is invalid, the vault is uninitialised or does not
+ *   allow the ERC20, the caller's shielded balance cannot cover `options.amount`
+ *   plus the fee, or the recomputed id does not appear on the ledger.
+ */
+export async function startWithdraw(
+  context: VaultContext,
+  options: StartWithdrawOptions,
+): Promise<RequestIdHex> {
+  if (options.amount <= 0n) {
+    throw new Error(`amount must be a positive integer; got ${String(options.amount)}.`);
+  }
+  const destEvmAddress = evmAddressBytes(options.destEvmAddress);
+  const erc20 = evmAddressBytes(context.erc20Address);
+  console.log(`vault contract: ${context.vaultContractAddress}`);
+  console.log(`erc20:          ${context.erc20Address}`);
+  console.log(`destination:    ${options.destEvmAddress}`);
+
+  await logTokenAmount(
+    context.evmRpcUrl,
+    context.erc20Address,
+    context.evmUserAddress,
+    options.amount,
+    "start-withdraw amount",
+  );
+  const before = await readVaultLedger(
+    context.providers.publicDataProvider,
+    context.vaultContractAddress,
+  );
+  if (!before.initialised) {
+    throw new Error("vault is not initialised, run the initialise flow first");
+  }
+
+  // The surrendered coin: the vault token for THIS erc20, of exactly `amount`
+  // plus the withdraw fee, under a fresh random nonce.
+  const withdrawFee = vaultTokenFees(before, erc20).withdraw;
+  console.log(`withdraw fee:   ${String(withdrawFee)} base units`);
+  const coin = {
+    nonce: crypto.getRandomValues(new Uint8Array(32)),
+    color: hexToBytes(vaultTokenType(context.erc20Address, context.vaultContractAddress)),
+    value: options.amount + withdrawFee,
+  };
+
+  const inIndex = newInputIndex();
+  const queued = await submitCallTx(context.providers, {
+    ...createCallTxOptions(
+      vaultCompiledContract,
+      "startWithdraw",
+      context.vaultContractAddress,
+      VAULT_PRIVATE_STATE_ID,
+      feeRecipientEncryptionMapping(before),
+      [inIndex, { erc20Address: erc20, amount: options.amount, destEvmAddress }, coin],
+    ),
+    privateStateId: VAULT_PRIVATE_STATE_ID,
+  });
+  console.log(`withdraw queued in tx ${queued.public.txId}`);
+  const flushed = await flushUntil(context, (state) => !state.inputRequestBuffer.member(inIndex), {
+    inIndexes: [inIndex],
+    requestIds: [],
+  });
+  const outIndex = flushedRequestIndex(flushed, Action.withdraw, inIndex);
+  const { evmNonce } = flushed.outputRequestBuffer.lookup(outIndex).entry;
+  const { gas } = flushed.withdrawArgsMap.lookup(inIndex);
+  console.log(`vault EVM nonce: ${String(evmNonce)}`);
+
+  // The record the contract will store, reconstructed byte for byte: the event's
+  // own sender (the vault contract, kernel.self() in-circuit), the pinned chain,
+  // the nonce the flush assigned, the gas the start copied, the contract-built
+  // `transfer(destination, amount)` calldata (the raw selector, the ABI-ready
+  // big-endian address and amount words, as broadcast), the vault's own 32-byte
+  // derivation path, and the contract-fixed routing.
+  const keyVersion = SIGNET_DEFAULT_KEY_VERSION;
+  const expectedRecord: SignBidirectionalEvent = {
+    sender: { bytes: hexToBytes(stripHexPrefix(context.vaultContractAddress)) },
+    keyVersion,
+    path: VAULT_PATH_BYTES,
+    ...TRANSFER_RESULT_MPC_ROUTING,
+    txParamType: TxParamType.evmType2,
+    txParams: {
+      to: erc20,
+      chainId: before.evmChainId,
+      nonce: evmNonce,
+      gasLimit: gas.gasLimit,
+      maxFeePerGas: gas.maxFeePerGas,
+      maxPriorityFeePerGas: gas.maxPriorityFeePerGas,
+      value: 0n,
+      accessListEntryCount: 0n,
+      accessList: [],
+      calldata: {
+        is_some: true,
+        value: {
+          selector: ERC20_TRANSFER_SELECTOR,
+          noWords: 2n,
+          words: [evmAddressAbiWord(destEvmAddress), numericAbiWord(options.amount)],
+        },
+      },
+    },
+  };
+  const expectedIdHex = requestIdHex(calculateRequestId(expectedRecord));
+  logEvmFeeCap(
+    expectedIdHex,
+    context.evmVaultAddress,
+    expectedRecord.txParams.gasLimit,
+    expectedRecord.txParams.maxFeePerGas,
+    expectedRecord.txParams.maxPriorityFeePerGas,
+  );
+
+  const result = await context.vault.callTx.sendWithdraw(outIndex);
+  console.log(`withdraw sent in tx ${result.public.txId}`);
+
+  // The bidirectionalWithdrawMap index is the request id, a hash of the event's seven
+  // execution fields (the transaction enters as a digest of its used entries): finding
+  // the recomputed id on the ledger proves both sides agree on those fields, not on the
+  // output schema, signatureDest or params.
+  const after = await readVaultLedger(
+    context.providers.publicDataProvider,
+    context.vaultContractAddress,
+  );
+  const index = toSignBidirectionalEventIndex(after.bidirectionalWithdrawMap);
+  if (!index.has(expectedIdHex)) {
+    throw new Error(
+      `recomputed request id ${expectedIdHex} not found in the vault's withdraw map ` +
+        `(present ids: [${[...index.keys()].join(", ")}])`,
+    );
+  }
+  console.log(`request id:     ${expectedIdHex}`);
+  return expectedIdHex;
+}

@@ -1,0 +1,43 @@
+{
+  "name": "@kinko/deploy",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Deploys Kinko's contracts to a Midnight network and records their addresses for the app, the backend and the relayer.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "deploy": "tsx src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "smoke:pay": "tsx src/smoke-pay.ts",
+    "smoke:card": "tsx src/smoke-card.ts",
+    "fund-roles": "tsx src/fund-roles.ts",
+    "sync-wallets": "tsx src/sync-wallets.ts"
+  },
+  "dependencies": {
+    "@kinko/card": "workspace:*",
+    "@kinko/kinko-disclosure": "workspace:*",
+    "@kinko/kinko-pay": "workspace:*",
+    "@midnight-ntwrk/compact-js": "3.0.0",
+    "@midnight-ntwrk/compact-runtime": "0.21.0",
+    "@midnight-ntwrk/midnight-js": "5.0.0",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "5.0.0",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "5.0.0",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "5.0.0",
+    "@midnightntwrk/dapp-connector-api": "4.1.0",
+    "@midnightntwrk/ledger-v9": "1.0.1",
+    "@midnightntwrk/wallet-sdk-address-format": "4.0.0",
+    "@sig-net/midnight-contract-deploy": "0.26.0-rc.15",
+    "@sig-net/midnight-examples-erc20-vault-contract": "workspace:*",
+    "@sig-net/midnight-examples-lib": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

@@ -1,0 +1,181 @@
+// The connected client context every flow takes: resolved configuration +
+// the vault providers + the JOINED vault contract handle. Built once per
+// flow file (inside a synced wallet session — see
+// {@link file://./vault-session.ts createVaultSession}) and handed to the
+// flow functions. The pieces come from where they belong: generic wallet
+// construction from the harness session, the contract's types and witnesses
+// from its own package, and the provider set + compiled-contract binding from
+// the example's deploy package, which its deploy flows build on too.
+
+import { findDeployedContract } from "@midnight-ntwrk/midnight-js/contracts";
+import {
+  MpcOutputCacheReader,
+  signetEventSourceFromIndexer,
+  SignetRequestResponseReader,
+} from "@sig-net/midnight";
+import { getMidnightNodeConfig, type MidnightNodeConfig } from "@sig-net/midnight-contract-deploy";
+import {
+  createVaultPrivateState,
+  VAULT_DEPOSIT_REQUESTS_PATH,
+} from "@sig-net/midnight-examples-erc20-vault-contract";
+import {
+  type DeployedVaultContract,
+  VAULT_PRIVATE_STATE_ID,
+  type VaultProviders,
+} from "@sig-net/midnight-examples-erc20-vault-contract";
+import {
+  buildVaultProviders,
+  vaultCompiledContract,
+} from "@sig-net/midnight-examples-erc20-vault-deploy";
+import type { ProofServerObserver } from "@sig-net/midnight-examples-lib";
+import {
+  optionalEnv,
+  requireEnv,
+  type SessionWallet,
+} from "@sig-net/midnight-examples-test-harness";
+
+import { OutputSource, parseOutputSource } from "./output-source.ts";
+import { resolveUserIdentity, type UserIdentity } from "./vault-identity.ts";
+
+/**
+ * Everything a flow needs: the resolved configuration (every field REQUIRED
+ * but {@link VaultContext.mpcOutputCache}: the setup pipeline populates the
+ * rest before a flow runs), the vault's midnight-js providers, and the joined
+ * vault contract. Flows receive this instead of raw env; they never construct
+ * providers, wallets, or contract handles themselves.
+ */
+export interface VaultContext {
+  /** Endpoints + network id of the Midnight network in use. */
+  readonly nodeConfig: MidnightNodeConfig;
+  /** Address of the deployed ERC20 vault contract on Midnight. */
+  readonly vaultContractAddress: string;
+  /** Address of the deployed central signet signer on Midnight. */
+  readonly signerContractAddress: string;
+  /** Address of the deployed signet responder contract on Midnight, which emits the MPC's responses. */
+  readonly responderContractAddress: string;
+  /** JSON-RPC endpoint of the EVM chain the vault operates on. */
+  readonly evmRpcUrl: string;
+  /** Where the attestation polls obtain the serialised output the MPC attested (`RESPOND_OUTPUT_SOURCE`). */
+  readonly respondOutputSource: OutputSource;
+  /**
+   * Reader over the MPC's output cache, what {@link OutputSource.MPCCache}
+   * reads through: the cache `MPC_OUTPUT_CACHE_URL` names, else the one the
+   * SDK publishes for the network. Undefined under {@link OutputSource.EVMNode}
+   * with no `MPC_OUTPUT_CACHE_URL`, which that source never needs.
+   */
+  readonly mpcOutputCache: MpcOutputCacheReader | undefined;
+  /** Chain id of that EVM chain. */
+  readonly evmChainId: bigint;
+  /** Address of the ERC20 token the vault holds (20-byte 0x hex). */
+  readonly erc20Address: string;
+  /** The vault's derived EVM account (path "vault") — the withdraw tx sender. */
+  readonly evmVaultAddress: string;
+  /** The user's derived EVM account (path = identity commitment hex) — the sweep tx sender. */
+  readonly evmUserAddress: string;
+  /** The caller identity every vault interaction is bound to. */
+  readonly identity: UserIdentity;
+  /** The vault's provider set (public data / proof / zk-config / private state / wallet). */
+  readonly providers: VaultProviders;
+  /** The vault at `MIDNIGHT_VAULT_CONTRACT_ADDRESS`, joined with witnesses + the identity as private state. */
+  readonly vault: DeployedVaultContract;
+}
+
+/**
+ * Build the {@link VaultContext}: resolve the configuration from the
+ * setup-populated env accumulator, set the midnight-js network id, build the
+ * vault's providers around the wallet, and join the deployed vault contract
+ * with the user identity as private state.
+ *
+ * @param env - The setup-populated env accumulator.
+ * @param wallet - The started wallet (from the harness session's `wallet()`).
+ * @param proofObserver - Called after every proof-server /check and /prove round trip.
+ * @returns The context to hand to the flow functions.
+ * @throws {Error} If a required env value is missing/malformed
+ *   (`RESPOND_OUTPUT_SOURCE=mpc-cache` without `MPC_OUTPUT_CACHE_URL` on a
+ *   network the SDK publishes no cache for included) or no contract answers
+ *   at `MIDNIGHT_VAULT_CONTRACT_ADDRESS`.
+ */
+export async function createVaultContext(
+  env: NodeJS.ProcessEnv,
+  wallet: SessionWallet,
+  proofObserver?: ProofServerObserver,
+): Promise<VaultContext> {
+  const nodeConfig = getMidnightNodeConfig(env);
+
+  const evmChainIdRaw = requireEnv(env, "EVM_CHAIN_ID");
+  if (!/^\d+$/.test(evmChainIdRaw)) {
+    throw new Error(`EVM_CHAIN_ID must be a positive integer; got "${evmChainIdRaw}".`);
+  }
+  const evmChainId = BigInt(evmChainIdRaw);
+
+  const erc20Address = requireEnv(env, "ERC20_ADDRESS");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(erc20Address)) {
+    throw new Error(`ERC20_ADDRESS must be a 20-byte 0x hex address; got "${erc20Address}".`);
+  }
+
+  const vaultContractAddress = requireEnv(env, "MIDNIGHT_VAULT_CONTRACT_ADDRESS");
+  const signerContractAddress = requireEnv(env, "MIDNIGHT_SIGNER_CONTRACT_ADDRESS");
+  const responderContractAddress = requireEnv(env, "MIDNIGHT_RESPONDER_CONTRACT_ADDRESS");
+  const respondOutputSource = parseOutputSource(requireEnv(env, "RESPOND_OUTPUT_SOURCE"));
+  const cacheUrl = optionalEnv(env, "MPC_OUTPUT_CACHE_URL");
+  const mpcOutputCache =
+    respondOutputSource === OutputSource.MPCCache || cacheUrl
+      ? new MpcOutputCacheReader({
+          cacheUrl,
+          networkId: nodeConfig.networkId,
+          signerContractAddress,
+        })
+      : undefined;
+  const identity = resolveUserIdentity(env);
+  const providers = buildVaultProviders(wallet.facade, wallet.keys, nodeConfig, proofObserver);
+
+  const vault = await findDeployedContract(providers, {
+    contractAddress: vaultContractAddress,
+    compiledContract: vaultCompiledContract,
+    privateStateId: VAULT_PRIVATE_STATE_ID,
+    initialPrivateState: createVaultPrivateState(identity.secretKey),
+  });
+
+  return {
+    nodeConfig,
+    vaultContractAddress,
+    signerContractAddress,
+    responderContractAddress,
+    evmRpcUrl: requireEnv(env, "EVM_RPC_URL"),
+    respondOutputSource,
+    mpcOutputCache,
+    evmChainId,
+    erc20Address,
+    evmVaultAddress: requireEnv(env, "EVM_VAULT_ADDRESS"),
+    evmUserAddress: requireEnv(env, "EVM_USER_ADDRESS"),
+    identity,
+    providers,
+    vault,
+  };
+}
+
+/**
+ * A request/response reader over the context's vault (requester) / signet
+ * responder pair, reading through the context's indexer-backed public data
+ * provider — the same read path the response server uses. Built fresh per
+ * flow invocation (the reader caches fetched request records internally).
+ *
+ * @param context - The flow's context.
+ * @param requestsPath - The resolved ledger-tree path of the request map.
+ *   Defaults to VAULT_DEPOSIT_REQUESTS_PATH (the bidirectionalDepositMap).
+ * @returns The reader.
+ */
+export function createResponseReader(
+  context: VaultContext,
+  requestsPath: readonly number[] = VAULT_DEPOSIT_REQUESTS_PATH,
+): SignetRequestResponseReader {
+  return new SignetRequestResponseReader({
+    requesterContractAddress: context.vaultContractAddress,
+    // The requestsPath the vault's notifications pack (erc20-vault.compact).
+    // The vault's 37 ledger fields chunk the state tree, so every path is depth 2.
+    requesterRequestsPath: requestsPath,
+    responderContractAddress: context.responderContractAddress,
+    publicDataProvider: context.providers.publicDataProvider,
+    eventSource: signetEventSourceFromIndexer({ queryUrl: context.nodeConfig.indexerUrl }),
+  });
+}

@@ -1,0 +1,45 @@
+{
+  "networkId": "preprod",
+  "vault": "9b0c8e579e0118e6a0ea8e67ff9029221a267888aa131c3ddd468c978e9523b8",
+  "usdc": "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238",
+  "kusdColor": "8ffaff6ad211473685e4c74ecd1f0697d2ed72d0026d4e1bf96cbea847256239",
+  "oraclePublicKey": {
+    "x": "6c4509027823e03975f88ac6036fe113ec4bae04bf75ff4de107e52dfe2db292",
+    "y": "44fe72809dcecebb9955c9e3902d52b0d9602581f2eb3e0c7614b58db8561d70"
+  },
+  "pay": {
+    "contractAddress": "01d7024cada69c5b9e2b572817b1c57f44db77d570b53a9e89aa371a328abaa2",
+    "txId": "00c03ff4db41716b831ee60a55eb37885b60c83537fd1234267294196492ee2ef2",
+    "circuits": [
+      "create_invoice",
+      "is_settled",
+      "attest_revenue_at_least",
+      "is_refunded",
+      "invoice_exists",
+      "cancel_invoice",
+      "settle_invoice_converted",
+      "receipt_exists",
+      "attestation_exists",
+      "settle_invoice",
+      "close_invoice",
+      "refund_payment",
+      "settle_batch"
+    ]
+  },
+  "tags": {
+    "contractAddress": "8cc4d90796c02827c52154a53d68b415e531a8aa87d203ccb8a6934a0eac99e1",
+    "txId": "007b0f0f8a3dc2db4e606887e1db2da5f312e15ddbf3fb3d541e006a5cc685bbe9",
+    "circuits": ["register_tag", "release_tag", "update_tag_keys", "transfer_tag"]
+  },
+  "gift": {
+    "contractAddress": "d7c38b41ec3e65b5ef81851da07ee06de8cef231710d2103b58e4acd4a8dee7d",
+    "txId": "00e01c07043d862949cb06b22b4acd2787188b44db7ee366dcecd194fb3bc35bce",
+    "circuits": ["issue", "card_voided", "card_issued", "void_card"]
+  },
+  "disclosure": {
+    "contractAddress": "37fb8cfde520ce7589f7cda4ca073f47e75d011ad4b87a194242f6c90123e4f8",
+    "txId": "00052b98f30f5ea34071329c3723ee466bdc01529489b4d24de951be6b42094737",
+    "circuits": ["file_record", "approve_case", "revoke_examiner", "open_case", "register_examiner"]
+  },
+  "deployedAt": "2026-11-16T10:03:34.988Z"
+}

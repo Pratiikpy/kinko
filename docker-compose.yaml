@@ -1,0 +1,155 @@
+# Local development stack for the examples' integration tests: Midnight (node +
+# indexer + proof server), a local EVM dev chain, and the fakenet MPC
+# responder. Start with `docker compose up -d`.
+#
+# The three midnight image tags are a MATCHED SET on the ledger-9 line: the
+# release set Midnight mainnet runs (node 2.1.101, indexer 4.4.101, proof
+# server 9.0.1), paired with the npm @midnightntwrk/ledger-v9 version the
+# workspace resolves (1.0.1, the ledger 9.1.0.1 patch proof server 9.0.1
+# ships). Never bump one alone: move the set together with the npm stack.
+services:
+  proof-server:
+    container_name: 'midnight-proof-server'
+    image: 'midnightntwrk/proof-server:9.0.1'
+    command: ['midnight-proof-server -v']
+    # Proving is memory-hungry and a long e2e run has killed this server outright. Bring it back
+    # on its own: paired with the prove retry in `createCrossContractProofServerProvider`, a death
+    # costs seconds instead of the rest of the run. `docker stop` is still respected.
+    restart: 'unless-stopped'
+    ports:
+      - '127.0.0.1:6300:6300'
+    environment:
+      RUST_BACKTRACE: 'full'
+
+  indexer:
+    # Must decode MIP-0002 `Misc` contract events, which the signet event reader queries.
+    container_name: 'midnight-indexer'
+    image: 'midnightntwrk/indexer-standalone:4.4.101'
+    # It exits when it starts before the node has produced block 1.
+    restart: 'unless-stopped'
+    ports:
+      - '127.0.0.1:8088:8088'
+    # Committed dev-only values (local defaults, nothing sensitive):
+    #   APP__INFRA__NODE__URL               -> WebSocket URL of the node the indexer follows
+    #   APP__INFRA__SECRET                  -> hex-encoded 32 bytes encrypting stored sensitive data (required)
+    #   APP__INFRA__SPO_NODE__URL           -> SPO node endpoint (points at the same dev node here)
+    #   APP__INFRA__SPO_NODE__BLOCKFROST_ID -> Blockfrost project id for SPO queries; dummy, unused on a local dev chain
+    environment:
+      RUST_LOG: 'indexer_standalone=info,chain_indexer=info,indexer_api=info,info'
+      APP__INFRA__NODE__URL: 'ws://node:9944'
+      APP__INFRA__SECRET: '303132333435363738393031323334353637383930313233343536373839303132'
+      APP__INFRA__SPO_NODE__URL: 'ws://node:9944'
+      APP__INFRA__SPO_NODE__BLOCKFROST_ID: 'dummy-not-using-spo'
+    # No healthcheck: this image ships nothing probe-able; the test-harness
+    # preflight checks the GraphQL endpoint instead.
+    depends_on:
+      node:
+        condition: service_started
+
+  node:
+    container_name: 'midnight-node'
+    image: 'midnightntwrk/midnight-node:2.1.101'
+    ports:
+      - '127.0.0.1:9944:9944'
+    environment:
+      CFG_PRESET: 'dev'
+      THRESHOLD: '0'
+      SHOW_CONFIG: 'false'
+      RUST_BACKTRACE: '1'
+      # Block-reward beneficiary; arbitrary-but-valid hex on a dev chain.
+      SIDECHAIN_BLOCK_BENEFICIARY: '04bcf7ad3be7a5c790460be82a713af570f22e0f801f6659ab8e84a52be6969e'
+
+  evm:
+    # anvil dev chain (id 31337, pre-funded dev-mnemonic accounts). State is
+    # saved to a volume every ten seconds and loaded on start, so a restart of
+    # the container or of the machine keeps the chain, the vault's USDC
+    # included, in step with the Midnight node, whose state also persists.
+    #
+    # Set SEPOLIA_FORK_RPC_URL to fork Sepolia so the real Uniswap V3 deployment
+    # + real USDC are present. The erc20-vault e2e suites run against this fork
+    # and deal ETH/USDC to the derived accounts via anvil cheatcodes. Unset -> a
+    # bare dev chain (no real tokens), which those suites no longer target.
+    # Forks at LATEST by default (any RPC serves latest state); set
+    # SEPOLIA_FORK_BLOCK to pin a block for determinism (needs an ARCHIVE RPC —
+    # a non-archive node cannot serve state at an old pinned block, so anvil
+    # forks but every state read returns empty).
+    container_name: 'local-evm'
+    image: 'ghcr.io/foundry-rs/foundry:v1.5.1'
+    # The image's default user cannot write the state volume; anvil then keeps
+    # running without saving, so run it as root.
+    user: 'root'
+    entrypoint: ['sh', '-c']
+    command:
+      # Forked: inherit Sepolia's chain id (11155111) so real-token semantics hold; the suites
+      # deal ETH/USDC via anvil cheatcodes (a forked real token has no open mint). Bare:
+      # anvil's default id 31337.
+      # The fakenet attests only once a transaction's block is `finalized`, which anvil
+      # places two epochs behind the head: one-second blocks and one-slot epochs finalise
+      # a block two seconds after it is mined.
+      - >
+        anvil --host 0.0.0.0 --block-time 1 --slots-in-an-epoch 1
+        --state /state/anvil.json --state-interval 10
+        ${SEPOLIA_FORK_RPC_URL:+--fork-url ${SEPOLIA_FORK_RPC_URL}}
+        ${SEPOLIA_FORK_BLOCK:+--fork-block-number ${SEPOLIA_FORK_BLOCK}}
+    volumes:
+      - 'anvil-state:/state'
+    ports:
+      - '127.0.0.1:8545:8545'
+
+  fakenet:
+    # The MPC fakenet responder (sig-net/solana-signet-program, fakenet-signer
+    # workspace) in Midnight-only mode (DISABLE_SOLANA). Polls the signet signer's
+    # notification events via the indexer, signs with keys derived from MPC_ROOT_KEY,
+    # and posts responses to the signet responder through the proof server.
+    #
+    # Only runs with `--profile fakenet` as it needs MPC_ROOT_KEY,
+    # MIDNIGHT_SIGNER_CONTRACT_ADDRESS and MIDNIGHT_RESPONDER_CONTRACT_ADDRESS,
+    # which exist only once the test-harness setup has derived the key and
+    # deployed the contracts. The setup does the
+    # whole hand-off itself: it appends the three values to the repo-root .env
+    # (append-only — existing lines are never touched) and starts this
+    # service. Manual equivalent (and the FAKENET_MANAGED=0 path):
+    #   docker compose --profile fakenet up -d --force-recreate fakenet
+    container_name: 'fakenet-responder'
+    image: 'ghcr.io/sig-net/fakenet:0.39.0'
+    profiles: ['fakenet']
+    depends_on:
+      indexer:
+        condition: service_started
+      proof-server:
+        condition: service_started
+      evm:
+        condition: service_started
+    extra_hosts: # To let the container reach services on the HOST (e.g. a hardhat node)
+      - 'host.docker.internal:host-gateway'
+    # The responder's output cache simulation: the exact bytes of every
+    # attestation it posts, served under the MPC's bucket layout. A run with
+    # RESPOND_OUTPUT_SOURCE=mpc-cache reads it at
+    # MPC_OUTPUT_CACHE_URL=http://127.0.0.1:3040/v1/fakenet.
+    ports:
+      - '127.0.0.1:3040:3040'
+    environment:
+      VERBOSE: '${VERBOSE:-false}'
+      DISABLE_SOLANA: '${DISABLE_SOLANA:-true}'
+      # Container-side twin of the tests' EVM RPC endpoint — both must point
+      # at the SAME chain.
+      EVM_RPC_URL: '${FAKENET_EVM_RPC_URL:-http://evm:8545}'
+      MIDNIGHT_NETWORK_ID: '${MIDNIGHT_NETWORK_ID:-undeployed}'
+      MIDNIGHT_INDEXER_URL: '${MIDNIGHT_INDEXER_URL:-http://indexer:8088/api/v4/graphql}'
+      MIDNIGHT_INDEXER_WS_URL: '${MIDNIGHT_INDEXER_WS_URL:-ws://indexer:8088/api/v4/graphql/ws}'
+      # Container-side twin of the host's MIDNIGHT_NODE_URL override, which
+      # points at 127.0.0.1 and would not resolve in here.
+      MIDNIGHT_NODE_URL: '${FAKENET_MIDNIGHT_NODE_URL:-http://node:9944}'
+      MIDNIGHT_PROOF_SERVER_URL: '${MIDNIGHT_PROOF_SERVER_URL:-http://proof-server:6300}'
+      # The responder's fee-paying wallet: the mpc_responder role seed the
+      # test-harness setup generates and funds from root (falls back to the
+      # local genesis wallet for a manual undeployed run).
+      MIDNIGHT_WALLET_SEED: '${MPC_RESPONDER_SEED:-0000000000000000000000000000000000000000000000000000000000000001}'
+      # All three are appended to the repo-root .env by the test-harness setup
+      # (which also starts this service).
+      MPC_ROOT_KEY: '${MPC_ROOT_KEY:-}'
+      MIDNIGHT_SIGNER_CONTRACT_ADDRESS: '${MIDNIGHT_SIGNER_CONTRACT_ADDRESS:-}'
+      MIDNIGHT_RESPONDER_CONTRACT_ADDRESS: '${MIDNIGHT_RESPONDER_CONTRACT_ADDRESS:-}'
+
+volumes:
+  anvil-state:

@@ -1,0 +1,589 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Kinko examiner disclosure.
+//
+// Kinko accounts are private: a payment between two account holders leaves no readable trace on
+// chain. Some people still have to read some payments: an accountant closing a merchant's books,
+// an auditor sampling a period, a regulator answering a complaint. This contract lets exactly one
+// examiner read exactly the payment statements named in one case, and nothing else, and it writes
+// every step of that on chain.
+//
+// How it works, in four moves:
+//
+//   1. Filing. An account holder or merchant files a sealed payment statement. The circuit seals
+//      every field to the disclosure key with an in-circuit ECDH (a fresh scalar e, E = e·G,
+//      S = e·disclosurePk, field j masked with Poseidon(S, j)) and stores a hash anchor of the
+//      plaintext. Nobody holds the disclosure key: it was split 2-of-3 between three keyholders at
+//      the deployment ceremony and destroyed.
+//   2. Examiners. The compliance operator registers the public key of each examiner it has
+//      vetted, and can revoke one.
+//   3. Cases. A registered examiner opens a case that names the records it wants (its scope) and
+//      an expiry. The case, its scope hash and the examiner are public before anyone approves.
+//   4. Approval. A keyholder that agrees posts, for every record in scope, its decryption share
+//      sealed to the examiner key. Two distinct keyholders open a case; the examiner combines
+//      their shares off chain, opens each record and checks it against its anchor.
+//
+// Public vs private, in one paragraph: a call publishes the ledger operations it performs (the
+// keys it addresses and the values it writes or reads). Circuit arguments and witnesses are not
+// published unless they flow into such an operation, and `disclose()` marks every place where one
+// does. Statement fields, filer secrets, the record nonce, sealing scalars and every keyholder or
+// examiner scalar stay private; ciphertexts, ephemeral points, anchors, record ids, examiner keys,
+// case scopes, expiries and the disclosure log are public. Each circuit below says which is which.
+//
+// Refusal codes are the assert messages; they are part of the public API.
+pragma language_version >= 0.23;
+
+import CompactStandardLibrary;
+
+// ------------------------------------------------------------------------------------------------
+// Types
+
+/**
+ * A payment statement, the plaintext of one record. It never reaches the ledger.
+ *
+ * `amount` is in micro-dollars (six decimals, as USDC), `time` is the payment time in Unix
+ * seconds, `direction` is 0 for money sent and 1 for money received. `counterparty` is the
+ * counterparty's account tag as the filer knows it. `reference` holds an invoice or receipt
+ * reference and `memo` a free-text memo, each encoded off chain as at most 31 bytes per field.
+ * `salt` is uniform randomness that keeps the anchor from being confirmed by guessing.
+ */
+export struct Statement {
+  amount: Uint<64>;
+  time: Uint<64>;
+  direction: Uint<8>;
+  counterparty: Field;
+  reference: Field;
+  memo: Vector<2, Field>;
+  salt: Field;
+}
+
+/**
+ * A curve point as stored on the ledger: its affine coordinates. Every stored point was produced
+ * by a circuit from a real curve operation, or is checked against one before it is trusted.
+ */
+export struct LedgerPoint {
+  x: Field;
+  y: Field;
+}
+
+/**
+ * One sealed record as stored on the ledger.
+ *
+ * `ct` is [filerId, pack(amount, time, direction), counterparty, reference, memo0, memo1, salt],
+ * each slot masked with Poseidon(S, j). `E` is the public half of the sealing scalar and `anchor`
+ * is the hash of the plaintext and `E`. Records are write-once: a record id can never be reused.
+ */
+export struct CipherRecord {
+  version: Uint<8>;
+  E: LedgerPoint;
+  ct: Vector<7, Field>;
+  anchor: Bytes<32>;
+}
+
+/** A keyholder's decryption share for one record of a case, sealed to the examiner key. */
+export struct CipherShare {
+  version: Uint<8>;
+  E2: LedgerPoint;
+  ct: Vector<2, Field>;
+}
+
+/** A registered examiner. Revocation is permanent: a revoked key is never registered again. */
+export struct Examiner {
+  pk: LedgerPoint;
+  active: Boolean;
+}
+
+/**
+ * One case: which examiner asked, for which records, until when, and who has approved.
+ * Slots at or beyond `count` hold the zero record id.
+ */
+export struct DisclosureCase {
+  examinerId: Bytes<32>;
+  examinerPk: LedgerPoint;
+  scopeHash: Bytes<32>;
+  count: Uint<8>;
+  recordIds: Vector<4, Bytes<32>>;
+  expiry: Uint<64>;
+  approvals: Vector<3, Boolean>;
+  approvalCount: Uint<8>;
+}
+
+export enum LogKind { EXAMINER_REGISTERED, EXAMINER_REVOKED, CASE_OPENED, CASE_APPROVED }
+
+/**
+ * One line of the public disclosure log. `keyholder` is the keyholder slot (0, 1 or 2) for an
+ * approval and 255 otherwise; `caseId` and `scopeHash` are zero for examiner entries. `at` is a
+ * caller-supplied time the circuit proves to be within `timeTolerance()` seconds of block time.
+ */
+export struct LogEntry {
+  kind: LogKind;
+  caseId: Bytes<32>;
+  scopeHash: Bytes<32>;
+  examinerId: Bytes<32>;
+  keyholder: Uint<8>;
+  at: Uint<64>;
+}
+
+struct RecordIdPreimage { domain: Bytes<32>; nonce: Bytes<32>; ex: Field; ey: Field; }
+struct AnchorPreimage {
+  domain: Bytes<32>;
+  filerId: Field;
+  statement: Statement;
+  ex: Field;
+  ey: Field;
+}
+struct ScopePreimage { domain: Bytes<32>; count: Uint<8>; recordIds: Vector<4, Bytes<32>>; }
+struct CaseIdPreimage { domain: Bytes<32>; examinerId: Bytes<32>; nonce: Bytes<32>; }
+struct ShareKeyPreimage { domain: Bytes<32>; caseId: Bytes<32>; index: Uint<8>; slot: Uint<8>; }
+struct BindPreimage { domain: Bytes<32>; caseId: Bytes<32>; recordId: Bytes<32>; }
+struct PointPreimage { domain: Bytes<32>; x: Field; y: Field; }
+
+// ------------------------------------------------------------------------------------------------
+// Pure helpers. These are exported so the off-chain code runs literally the same maths.
+
+/** Mask construction version carried by every sealed value. Poseidon is not promised stable
+ *  across platform upgrades, so a reader checks this before opening anything. */
+export pure circuit cipherVersion(): Uint<8> {
+  return 1;
+}
+
+/** Seconds of slack allowed between a logged time and the block time. */
+export pure circuit timeTolerance(): Uint<64> {
+  return 600;
+}
+
+export pure circuit identityPoint(): JubjubPoint {
+  return constructJubjubPoint(0 as Field, 1 as Field);
+}
+
+export pure circuit storedPoint(P: JubjubPoint): LedgerPoint {
+  return LedgerPoint { x: jubjubPointX(P), y: jubjubPointY(P) };
+}
+
+export pure circuit pointOf(p: LedgerPoint): JubjubPoint {
+  return constructJubjubPoint(p.x, p.y);
+}
+
+export pure circuit pubKeyOf(k: JubjubScalar): JubjubPoint {
+  return ecMulGenerator(k);
+}
+
+export pure circuit mulPoint(P: JubjubPoint, k: JubjubScalar): JubjubPoint {
+  return ecMul(P, k);
+}
+
+export pure circuit addPoints(P: JubjubPoint, Q: JubjubPoint): JubjubPoint {
+  return ecAdd(P, Q);
+}
+
+/** One-time pad for slot j of a value sealed under the shared point S. Poseidon output is
+ *  uniform over the whole field, so no high bits of a plaintext leak. */
+export pure circuit maskOf(S: JubjubPoint, j: Uint<8>): Field {
+  return transientHash<Vector<3, Field>>([jubjubPointX(S), jubjubPointY(S), j as Field]);
+}
+
+/** amount·2^72 + time·2^8 + direction: lossless, below 2^136. */
+export pure circuit packAmountTime(amount: Uint<64>, time: Uint<64>, direction: Uint<8>): Field {
+  return (amount as Field) * (4722366482869645213696 as Field)
+       + (time as Field) * (256 as Field)
+       + (direction as Field);
+}
+
+/** Commitment to the compliance operator's secret, fixed at deployment. */
+export pure circuit operatorCommitmentOf(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "kinko:disclosure:v1:operator"), sk]);
+}
+
+/** The filer's identity inside its own sealed statements. Never stored in the clear. */
+export pure circuit filerIdOf(sk: Bytes<32>): Field {
+  return degradeToTransient(persistentHash<Vector<2, Bytes<32>>>([pad(32, "kinko:disclosure:v1:filer"), sk]));
+}
+
+/** Record id H("record", nonce, E). The nonce is private and uniform, so the id is neither
+ *  guessable nor linked to the filer. */
+export pure circuit recordIdOf(nonce: Bytes<32>, E: JubjubPoint): Bytes<32> {
+  return persistentHash<RecordIdPreimage>(
+    RecordIdPreimage { domain: pad(32, "kinko:disclosure:v1:record"), nonce: nonce,
+                       ex: jubjubPointX(E), ey: jubjubPointY(E) });
+}
+
+/** Anchor H("anchor", filerId, statement, E): what an opened record must rehash to. */
+export pure circuit anchorOf(filerId: Field, s: Statement, E: JubjubPoint): Bytes<32> {
+  return persistentHash<AnchorPreimage>(
+    AnchorPreimage { domain: pad(32, "kinko:disclosure:v1:anchor"), filerId: filerId, statement: s,
+                     ex: jubjubPointX(E), ey: jubjubPointY(E) });
+}
+
+export pure circuit examinerIdOf(pk: JubjubPoint): Bytes<32> {
+  return persistentHash<PointPreimage>(
+    PointPreimage { domain: pad(32, "kinko:disclosure:v1:examiner"), x: jubjubPointX(pk), y: jubjubPointY(pk) });
+}
+
+/** Ledger key of a used ephemeral point, so a sealing scalar can never be used twice. */
+export pure circuit ephemeralKeyOf(E: JubjubPoint): Bytes<32> {
+  return persistentHash<PointPreimage>(
+    PointPreimage { domain: pad(32, "kinko:disclosure:v1:ephemeral"), x: jubjubPointX(E), y: jubjubPointY(E) });
+}
+
+export pure circuit scopeHashOf(count: Uint<8>, recordIds: Vector<4, Bytes<32>>): Bytes<32> {
+  return persistentHash<ScopePreimage>(
+    ScopePreimage { domain: pad(32, "kinko:disclosure:v1:scope"), count: count, recordIds: recordIds });
+}
+
+/** Case id H("case", examinerId, nonce). Only the examiner can open a case under its own id, so
+ *  nobody else can occupy one in advance. */
+export pure circuit caseIdOf(examinerId: Bytes<32>, nonce: Bytes<32>): Bytes<32> {
+  return persistentHash<CaseIdPreimage>(
+    CaseIdPreimage { domain: pad(32, "kinko:disclosure:v1:case"), examinerId: examinerId, nonce: nonce });
+}
+
+/** Ledger key of keyholder `index`'s share for slot `slot` of a case. */
+export pure circuit shareKeyOf(caseId: Bytes<32>, index: Uint<8>, slot: Uint<8>): Bytes<32> {
+  return persistentHash<ShareKeyPreimage>(
+    ShareKeyPreimage { domain: pad(32, "kinko:disclosure:v1:share"), caseId: caseId, index: index, slot: slot });
+}
+
+/**
+ * Case-binding scalar for one record of one case. It is below 2^248, inside the scalar field.
+ * See `approve_case` for why shares carry it.
+ */
+export pure circuit bindScalarOf(caseId: Bytes<32>, recordId: Bytes<32>): JubjubScalar {
+  return degradeToTransient(persistentHash<BindPreimage>(
+    BindPreimage { domain: pad(32, "kinko:disclosure:v1:bind"), caseId: caseId, recordId: recordId })) as JubjubScalar;
+}
+
+/** Shamir evaluation point of keyholder slot i (slots 0, 1, 2 hold f(1), f(2), f(3)). */
+export pure circuit shamirIndexOf(i: Uint<8>): JubjubScalar {
+  return (i == 0 ? 1 : (i == 1 ? 2 : 3)) as JubjubScalar;
+}
+
+/**
+ * Keyholder i's decryption share for a record with ephemeral point E, inside case binding h:
+ *   X_i = s_i·E + x_i·h·(k·E)
+ * The first term is the threshold share of S = sk·E. The second term vanishes under Lagrange
+ * interpolation of any two shares of the same case (it is the line x ↦ x·h·kE, which is zero at
+ * x = 0), and does not vanish when the two shares come from different cases (different h).
+ */
+export pure circuit decryptionShareOf(E: JubjubPoint, s: JubjubScalar, k: JubjubScalar,
+                                      h: JubjubScalar, x: JubjubScalar): JubjubPoint {
+  return ecAdd(ecMul(E, s), ecMul(ecMul(ecMul(E, k), h), x));
+}
+
+// ------------------------------------------------------------------------------------------------
+// Public ledger
+
+/** Fixed at deployment. All public: anyone can re-check the ceremony from these alone. */
+export sealed ledger operatorCommitment: Bytes<32>;
+export sealed ledger disclosurePk: JubjubPoint;
+export sealed ledger keyholderPks: Vector<3, LedgerPoint>;
+export sealed ledger bindingPk: JubjubPoint;
+export sealed ledger threshold: Uint<8>;
+
+/** Sealed statements by record id. Public ciphertext, private plaintext. */
+export ledger records: Map<Bytes<32>, CipherRecord>;
+/** Every ephemeral point ever used to seal a record or a share. Reuse is refused. */
+export ledger usedEphemerals: Set<Bytes<32>>;
+export ledger examiners: Map<Bytes<32>, Examiner>;
+export ledger cases: Map<Bytes<32>, DisclosureCase>;
+export ledger shares: Map<Bytes<32>, CipherShare>;
+/** The disclosure log: entry n at key n, `logLength` entries in all. */
+export ledger disclosureLog: Map<Uint<64>, LogEntry>;
+export ledger logLength: Counter;
+
+// ------------------------------------------------------------------------------------------------
+// Witnesses. Untrusted inputs: every property that matters is re-checked by an assert.
+
+witness localSecretKey(): Bytes<32>;
+witness localScalar(): JubjubScalar;
+witness bindingScalar(): JubjubScalar;
+witness ephemeralScalar(): JubjubScalar;
+witness recordNonce(): Bytes<32>;
+witness statementToFile(): Statement;
+
+// ------------------------------------------------------------------------------------------------
+// Deployment ceremony
+
+/**
+ * Every confidentiality claim rests on the ceremony, and a wrong ceremony fails silently: a
+ * degenerate or repeated key lets one party open every record alone, and an inconsistent sharing
+ * means no two keyholders can ever open one, which nobody learns until an examiner needs it. All
+ * keys are public, so the constructor checks all of it before the contract exists.
+ *
+ * Feldman consistency in point form: with f(x) = sk + a·x and pk_i = f(i)·G,
+ *   2·pk_1 − pk_2 = sk·G   and   3·pk_1 − pk_3 = 2·sk·G,
+ * which pins all three shares to one line through the disclosure key, so every pair of keyholders
+ * really does reconstruct it.
+ */
+constructor(opCommitment: Bytes<32>, dPk: JubjubPoint, kPks: Vector<3, JubjubPoint>, bPk: JubjubPoint) {
+  const id = identityPoint();
+  assert(opCommitment != pad(32, ""), "BAD_OPERATOR");
+  assert(dPk != id, "BAD_DISCLOSURE_KEY");
+  assert(kPks[0] != id && kPks[1] != id && kPks[2] != id, "BAD_KEYHOLDER_KEY");
+  assert(kPks[0] != dPk && kPks[1] != dPk && kPks[2] != dPk, "BAD_KEYHOLDER_KEY");
+  assert(kPks[0] != kPks[1] && kPks[0] != kPks[2] && kPks[1] != kPks[2], "BAD_KEYHOLDER_KEY");
+  assert(bPk != id && bPk != dPk, "BAD_BINDING_KEY");
+  assert(bPk != kPks[0] && bPk != kPks[1] && bPk != kPks[2], "BAD_BINDING_KEY");
+  assert(ecAdd(ecMul(kPks[0], 2 as JubjubScalar), ecNeg(kPks[1])) == dPk, "BAD_KEY_SHARING");
+  assert(ecAdd(ecMul(kPks[0], 3 as JubjubScalar), ecNeg(kPks[2])) == ecMul(dPk, 2 as JubjubScalar), "BAD_KEY_SHARING");
+
+  operatorCommitment = disclose(opCommitment);
+  disclosurePk = disclose(dPk);
+  keyholderPks = disclose([storedPoint(kPks[0]), storedPoint(kPks[1]), storedPoint(kPks[2])]);
+  bindingPk = disclose(bPk);
+  threshold = 2;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Shared checks
+
+circuit assertOperator(): [] {
+  assert(operatorCommitmentOf(localSecretKey()) == operatorCommitment, "NOT_OPERATOR");
+}
+
+/** Proves `at` is within `timeTolerance()` seconds at or before block time. */
+circuit assertNow(at: Uint<64>): [] {
+  assert(blockTimeGte(at), "BAD_TIMESTAMP");
+  assert(blockTimeLt((at + timeTolerance()) as Uint<64>), "BAD_TIMESTAMP");
+}
+
+/** Draws a sealing scalar, refuses the identity and any point used before, and records it. */
+circuit freshEphemeral(): JubjubScalar {
+  const e = ephemeralScalar();
+  const E = ecMulGenerator(e);
+  assert(E != identityPoint(), "BAD_EPHEMERAL");
+  const key = disclose(ephemeralKeyOf(E));
+  assert(!usedEphemerals.member(key), "EPHEMERAL_REUSED");
+  usedEphemerals.insert(key);
+  return e;
+}
+
+circuit appendLog(entry: LogEntry): [] {
+  disclosureLog.insert(logLength.read(), entry);
+  logLength.increment(1);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Filing
+
+/**
+ * Files one sealed payment statement and returns its record id.
+ *
+ * Public: the record id, `E`, the seven ciphertext slots, the anchor and the ephemeral key.
+ * Private: every statement field, the filer's secret and filer id, the nonce and the sealing
+ * scalar. The filer id is computed here from the filer's own secret and travels only inside the
+ * ciphertext, so a statement is attributable to its filer once opened, cannot be filed in another
+ * account's name, and links to nobody while sealed.
+ *
+ * Anyone may file. What a statement is worth comes from its anchor and the payment it describes;
+ * filing proves who filed it and that it has not changed since, not that the payment happened.
+ */
+export circuit file_record(): Bytes<32> {
+  const filerId = filerIdOf(localSecretKey());
+  const s = statementToFile();
+  assert(s.direction <= 1, "BAD_DIRECTION");
+
+  const e = freshEphemeral();
+  const E = disclose(ecMulGenerator(e));
+  const S = ecMul(disclosurePk, e);
+  const ct = [filerId + maskOf(S, 0),
+              packAmountTime(s.amount, s.time, s.direction) + maskOf(S, 1),
+              s.counterparty + maskOf(S, 2),
+              s.reference + maskOf(S, 3),
+              s.memo[0] + maskOf(S, 4),
+              s.memo[1] + maskOf(S, 5),
+              s.salt + maskOf(S, 6)];
+
+  // `freshEphemeral` has already refused any E seen before, and the id hashes E, so no id can
+  // repeat: a record, once filed, can never be overwritten.
+  const recordId = disclose(recordIdOf(recordNonce(), E));
+  records.insert(recordId, CipherRecord { version: cipherVersion(),
+                                          E: storedPoint(E),
+                                          ct: disclose(ct),
+                                          anchor: disclose(anchorOf(filerId, s, E)) });
+  return recordId;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Examiners
+
+/**
+ * Registers an examiner key. Operator only.
+ *
+ * Public: the examiner key, its id and a log entry. An examiner key that equals the disclosure,
+ * binding or a keyholder key is refused: it would let one party count twice.
+ */
+export circuit register_examiner(pk: JubjubPoint, at: Uint<64>): [] {
+  assertOperator();
+  assertNow(disclose(at));
+  const p = disclose(pk);
+  const keys = keyholderPks;
+  assert(p != identityPoint() && p != disclosurePk && p != bindingPk, "BAD_EXAMINER_KEY");
+  assert(p != pointOf(keys[0]) && p != pointOf(keys[1]) && p != pointOf(keys[2]), "BAD_EXAMINER_KEY");
+  const eid = examinerIdOf(p);
+  assert(!examiners.member(eid), "EXAMINER_EXISTS");
+  examiners.insert(eid, Examiner { pk: storedPoint(p), active: true });
+  appendLog(LogEntry { kind: LogKind.EXAMINER_REGISTERED, caseId: pad(32, ""), scopeHash: pad(32, ""),
+                       examinerId: eid, keyholder: 255, at: disclose(at) });
+}
+
+/**
+ * Revokes an examiner. Operator only. Revocation is permanent and stops every open case of that
+ * examiner from collecting further approvals. Shares already posted cannot be recalled: an
+ * examiner that already holds two shares for a record has already been able to read it.
+ */
+export circuit revoke_examiner(examinerId: Bytes<32>, at: Uint<64>): [] {
+  assertOperator();
+  assertNow(disclose(at));
+  const eid = disclose(examinerId);
+  assert(examiners.member(eid), "NO_SUCH_EXAMINER");
+  const x = examiners.lookup(eid);
+  assert(x.active, "EXAMINER_REVOKED");
+  examiners.insert(eid, Examiner { ...x, active: false });
+  appendLog(LogEntry { kind: LogKind.EXAMINER_REVOKED, caseId: pad(32, ""), scopeHash: pad(32, ""),
+                       examinerId: eid, keyholder: 255, at: disclose(at) });
+}
+
+// ------------------------------------------------------------------------------------------------
+// Cases
+
+/** A slot inside the scope must name an existing record; a slot outside it must be zero. */
+circuit checkScopeSlot(rid: Bytes<32>, inScope: Boolean): [] {
+  if (inScope) {
+    assert(rid != pad(32, ""), "BAD_SCOPE");
+    assert(records.member(rid), "NO_SUCH_RECORD");
+  } else {
+    assert(rid == pad(32, ""), "BAD_SCOPE");
+  }
+}
+
+/** Two in-scope slots may not name the same record. */
+circuit distinctOrUnused(a: Bytes<32>, b: Bytes<32>, bInScope: Boolean): Boolean {
+  return a != b || !bInScope;
+}
+
+/**
+ * Opens a case. Only a registered, unrevoked examiner can open one, and only under its own key.
+ *
+ * `count` records are named in the first `count` slots of `recordIds`; the rest are zero. The
+ * case id is H("case", examinerId, nonce) with a caller-chosen nonce. Because the examiner proves
+ * its key, no third party can occupy a case id in advance, whatever the nonce.
+ *
+ * Public: the examiner, the case id, the scope (record ids, count and scope hash), the expiry and
+ * a log entry. That is deliberate: the keyholders, and anyone else, see exactly what a case
+ * covers before a single approval exists, and a case can never be widened afterwards.
+ * Private: the examiner scalar.
+ */
+export circuit open_case(examinerPk: JubjubPoint, recordIds: Vector<4, Bytes<32>>, count: Uint<8>,
+                         expiry: Uint<64>, nonce: Bytes<32>, at: Uint<64>): Bytes<32> {
+  const pk = disclose(examinerPk);
+  assert(ecMulGenerator(localScalar()) == pk, "NOT_EXAMINER");
+  const eid = examinerIdOf(pk);
+  assert(examiners.member(eid), "NOT_EXAMINER");
+  assert(examiners.lookup(eid).active, "EXAMINER_REVOKED");
+
+  assertNow(disclose(at));
+  const exp = disclose(expiry);
+  assert(blockTimeLt(exp), "BAD_EXPIRY");
+
+  const n = disclose(count);
+  assert(n >= 1 && n <= 4, "BAD_SCOPE");
+  const ids = disclose(recordIds);
+  checkScopeSlot(ids[0], true);
+  checkScopeSlot(ids[1], n > 1);
+  checkScopeSlot(ids[2], n > 2);
+  checkScopeSlot(ids[3], n > 3);
+  assert(distinctOrUnused(ids[0], ids[1], n > 1) && distinctOrUnused(ids[0], ids[2], n > 2)
+      && distinctOrUnused(ids[0], ids[3], n > 3) && distinctOrUnused(ids[1], ids[2], n > 2)
+      && distinctOrUnused(ids[1], ids[3], n > 3) && distinctOrUnused(ids[2], ids[3], n > 3),
+         "DUPLICATE_IN_SCOPE");
+
+  const caseId = caseIdOf(eid, disclose(nonce));
+  assert(!cases.member(caseId), "DUPLICATE_CASE");
+  const scopeHash = scopeHashOf(n, ids);
+  cases.insert(caseId, DisclosureCase { examinerId: eid,
+                                        examinerPk: storedPoint(pk),
+                                        scopeHash: scopeHash,
+                                        count: n,
+                                        recordIds: ids,
+                                        expiry: exp,
+                                        approvals: [false, false, false],
+                                        approvalCount: 0 });
+  appendLog(LogEntry { kind: LogKind.CASE_OPENED, caseId: caseId, scopeHash: scopeHash,
+                       examinerId: eid, keyholder: 255, at: disclose(at) });
+  return caseId;
+}
+
+/**
+ * Seals keyholder i's share for one slot of a case to the examiner.
+ *
+ * All slots of one approval share a single sealing point S2, so slot j uses mask indices 2j and
+ * 2j+1. Reusing 0 and 1 would let anyone subtract two slots and cancel the masks.
+ */
+// A circuit evaluates both sides of every branch, so the share is computed for every slot and
+// only its write is conditional. `rid` must name a filed record even for a slot out of scope:
+// a lookup of an empty slot would yield a point off the curve, which no proof can satisfy.
+// `approve_case` passes the case's first record for those slots.
+circuit sealShare(caseId: Bytes<32>, i: Uint<8>, slot: Uint<8>, rid: Bytes<32>, inScope: Boolean,
+                  s: JubjubScalar, k: JubjubScalar, E2: LedgerPoint, S2: JubjubPoint): [] {
+  const X = decryptionShareOf(pointOf(records.lookup(rid).E), s, k, bindScalarOf(caseId, rid), shamirIndexOf(i));
+  const j = (slot * 2) as Uint<8>;
+  const ct = [jubjubPointX(X) + maskOf(S2, j), jubjubPointY(X) + maskOf(S2, (j + 1) as Uint<8>)];
+  if (inScope) {
+    shares.insert(shareKeyOf(caseId, i, slot), CipherShare { version: cipherVersion(), E2: E2, ct: disclose(ct) });
+  }
+}
+
+/**
+ * Keyholder `index` (0, 1 or 2) approves a case and posts its share for every record in scope.
+ *
+ * Refused unless the caller proves the keyholder scalar for that slot and the common binding
+ * scalar, the case exists, has not expired, its examiner is still registered and active, this
+ * keyholder has not approved it yet, and fewer than two keyholders have. A third approval is
+ * refused: two open the case, and a third share would add nothing but exposure.
+ *
+ * Why shares carry a case binding. A plain threshold share s_i·E belongs to the record, not to
+ * the case, so two cases naming one record, each with a single approval, would combine into a
+ * full disclosure that neither case ever approved: expiry, revocation and the two-approval count
+ * would all be bypassable. Each share here is s_i·E + x_i·h·(k·E), with h derived from this case
+ * and record and k a binding scalar every keyholder holds (published as `bindingPk`). Two shares
+ * of the same case interpolate to sk·E exactly; shares from different cases leave a residue the
+ * examiner cannot remove without k or the filer's sealing scalar.
+ *
+ * Public: the case id, the keyholder slot, one sealed share per record in scope, the share
+ * ephemeral point and a log entry. Private: the keyholder scalar, the binding scalar and the
+ * decryption shares themselves, which only the examiner can unseal.
+ */
+export circuit approve_case(caseId: Bytes<32>, index: Uint<8>, at: Uint<64>): [] {
+  const i = disclose(index);
+  assert(i < 3, "NOT_KEYHOLDER");
+  const s = localScalar();
+  const pks = keyholderPks;
+  assert(ecMulGenerator(s) == pointOf(i == 0 ? pks[0] : (i == 1 ? pks[1] : pks[2])), "NOT_KEYHOLDER");
+  const k = bindingScalar();
+  assert(ecMulGenerator(k) == bindingPk, "NOT_KEYHOLDER");
+
+  const cid = disclose(caseId);
+  assert(cases.member(cid), "NO_SUCH_CASE");
+  const c = cases.lookup(cid);
+  assertNow(disclose(at));
+  assert(blockTimeLt(c.expiry), "CASE_EXPIRED");
+  assert(examiners.lookup(c.examinerId).active, "EXAMINER_REVOKED");
+  const done = c.approvals;
+  assert(!(i == 0 ? done[0] : (i == 1 ? done[1] : done[2])), "ALREADY_APPROVED");
+  assert(c.approvalCount < 2, "THRESHOLD_REACHED");
+
+  const e2 = freshEphemeral();
+  const E2 = disclose(storedPoint(ecMulGenerator(e2)));
+  const S2 = ecMul(pointOf(c.examinerPk), e2);
+  const ids = c.recordIds;
+  sealShare(cid, i, 0, ids[0], true, s, k, E2, S2);
+  sealShare(cid, i, 1, c.count > 1 ? ids[1] : ids[0], c.count > 1, s, k, E2, S2);
+  sealShare(cid, i, 2, c.count > 2 ? ids[2] : ids[0], c.count > 2, s, k, E2, S2);
+  sealShare(cid, i, 3, c.count > 3 ? ids[3] : ids[0], c.count > 3, s, k, E2, S2);
+
+  cases.insert(cid, DisclosureCase { ...c,
+                                     approvals: [done[0] || i == 0, done[1] || i == 1, done[2] || i == 2],
+                                     approvalCount: (c.approvalCount + 1) as Uint<8> });
+  appendLog(LogEntry { kind: LogKind.CASE_APPROVED, caseId: cid, scopeHash: c.scopeHash,
+                       examinerId: c.examinerId, keyholder: i, at: disclose(at) });
+}

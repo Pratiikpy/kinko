@@ -1,0 +1,37 @@
+{
+  "name": "@kinko/card",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Kinko card wallets: open a gift card or PIN card from its secret, read its private balance, and spend it with real proofs while someone else pays the network fee.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./seed": "./src/seed.ts",
+    "./snapshot": "./src/snapshot.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@midnightntwrk/dapp-connector-api": "4.1.0",
+    "@midnightntwrk/ledger-v9": "1.0.1",
+    "@midnightntwrk/wallet-sdk-abstractions": "3.0.0",
+    "@midnightntwrk/wallet-sdk-address-format": "4.0.0",
+    "@midnightntwrk/wallet-sdk-dust-wallet": "5.0.0",
+    "@midnightntwrk/wallet-sdk-facade": "5.0.0",
+    "@midnightntwrk/wallet-sdk-hd": "4.0.0",
+    "@midnightntwrk/wallet-sdk-shielded": "4.0.0",
+    "@midnightntwrk/wallet-sdk-unshielded-wallet": "4.0.0",
+    "@noble/hashes": "1.8.0",
+    "@scure/bip39": "1.6.0",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@sig-net/midnight-contract-deploy": "0.26.0-rc.15",
+    "@types/node": "26.1.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

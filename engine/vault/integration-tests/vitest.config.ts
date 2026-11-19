@@ -1,0 +1,57 @@
+// The pipeline's orchestration contract:
+// - globalSetup runs the compile/deploy/derive pipeline ONCE in the main
+//   process before any test file (also when a single file is selected), and
+//   hands the env accumulator to the workers via provide/inject.
+// - Flow files can NEVER run in parallel (shared chain state, one MPC
+//   responder, EVM nonces and funds): fileParallelism false runs them one at
+//   a time, and the sequencer pins the order — vitest's default sequencer
+//   orders by results cache (failed/slowest first), not by name.
+// - bail + --disable-console-intercept stay on the test:e2e script.
+import { basename } from "node:path";
+
+import { defineConfig } from "vitest/config";
+import { BaseSequencer, type TestSpecification } from "vitest/node";
+
+// Explicit flow order. New flow files must be appended here; unknown files
+// run last, name-ordered. happy-day runs first: it initialises the vault the
+// later flows build on.
+const FILE_ORDER = [
+  "happy-day-e2e.test.ts",
+  "allowed-tokens-e2e.test.ts",
+  "deposit-withdrawal-failure-refund.test.ts",
+  "deposit-claimant-not-caller.test.ts",
+  "false-claimer.test.ts",
+  "bearer-transfer.test.ts",
+  "approve-e2e.test.ts",
+  "swap-e2e.test.ts",
+  "supply-redeem-e2e.test.ts",
+  "supply-refund-e2e.test.ts",
+  "swap-refund-e2e.test.ts",
+  "redeem-refund-e2e.test.ts",
+  "admin-replace-nonce-e2e.test.ts",
+  // Last: its concurrent submissions are the load most likely to poison the local stack.
+  "concurrent-flush-e2e.test.ts",
+];
+
+const rank = (moduleId: string): number => {
+  const index = FILE_ORDER.indexOf(basename(moduleId));
+  return index === -1 ? FILE_ORDER.length : index;
+};
+
+class PipelineSequencer extends BaseSequencer {
+  override sort(files: TestSpecification[]): Promise<TestSpecification[]> {
+    return Promise.resolve(
+      [...files].sort(
+        (a, b) => rank(a.moduleId) - rank(b.moduleId) || a.moduleId.localeCompare(b.moduleId),
+      ),
+    );
+  }
+}
+
+export default defineConfig({
+  test: {
+    globalSetup: "./src/setup.ts",
+    fileParallelism: false,
+    sequence: { sequencer: PipelineSequencer },
+  },
+});

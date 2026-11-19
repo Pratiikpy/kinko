@@ -1,0 +1,37 @@
+{
+  "name": "@kinko/relayer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Carries Kinko vault requests through their permissionless steps (flush, send, MPC signature, Ethereum broadcast, attestation queue) so a user signs only their start and complete circuits and one Ethereum transfer. Holds its own fee wallet and no user key.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "tsx src/main.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/midnight-js": "5.0.0",
+    "@sig-net/midnight": "0.26.0-rc.15",
+    "@sig-net/midnight-contract-deploy": "0.26.0-rc.15",
+    "@sig-net/midnight-examples-erc20-vault-contract": "workspace:*",
+    "@sig-net/midnight-examples-erc20-vault-deploy": "workspace:*",
+    "@sig-net/midnight-examples-lib": "workspace:*",
+    "ethers": "6.17.0"
+  },
+  "devDependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.21.0",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "5.0.0",
+    "@midnightntwrk/onchain-runtime-v4": "4.0.1",
+    "@sig-net/midnight-examples-erc20-vault-integration-tests": "workspace:*",
+    "@sig-net/midnight-examples-test-harness": "workspace:*",
+    "@sig-net/midnight-signer": "0.26.0-rc.15",
+    "@types/node": "26.1.1",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2",
+    "vite": "8.1.4",
+    "vitest": "5.0.0"
+  }
+}

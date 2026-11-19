@@ -1,0 +1,457 @@
+// Respond-output resolution: the client half of the attestation protocol.
+// The MPC's RespondBidirectionalEvent carries the request id, the
+// target-chain block height, its verdict (the output kind), the output's
+// width and hash, the attestation digest and the ECDSA signature over that
+// digest, while the serialised output itself travels off chain, so the client
+// obtains the output bytes independently and checks them against the
+// attested width and hash. A post's declared kind picks the bytes it is
+// checked over, and the chosen OutputSource yields them:
+//
+//   OutputSource.EVMNode  -> a post declaring an executed transaction is
+//                            checked over the mined transaction's raw traced
+//                            output (see ../observed-execution.ts), decoded
+//                            per the request's output schema and
+//                            Borsh-serialised as the MPC does. Only computable
+//                            when the observation reports an executed
+//                            transaction. A post declaring a failed or
+//                            unviable transaction is checked over the empty
+//                            output the protocol attests, which needs no
+//                            observation.
+//   OutputSource.MPCCache -> every post is checked over the one object the
+//                            MPC cached for the request before it posted (the
+//                            SDK's MpcOutputCacheReader): the attested bytes
+//                            verbatim, empty for a failure.
+//
+// Candidate selection is by VERIFICATION alone, of the signature against the
+// response key the vault pinned at initialise and of the bytes against the
+// attested width and hash: a post's declared kind, the observation's own
+// success flag and the cache's contents are all unauthenticated, they only
+// decide which bytes get checked. The verified
+// kind and bytes route settlement: the action's complete circuit branches on
+// the kind.
+// The fetched output is UNTRUSTED until that check, and stays untrusted on
+// chain until the in-circuit checks: `queueAttestation` verifies the same
+// signature from the event alone and records the attested width and hash, and
+// the complete circuit checks the presented bytes against them with
+// `verifyAttestedOutputV1<N>`. Those in-circuit checks are the authentication
+// gate, so a forged post merely wastes a proof here, it cannot mint.
+import {
+  boolAbiWord,
+  deriveRespondSchema,
+  deserializeEvmOutput,
+  executedEvmRespondOutput,
+  type MpcOutputCacheReader,
+  OutputKind,
+  type RequestIdHex,
+  type RespondBidirectionalEvent,
+  type Secp256k1Point,
+  serializeRespondOutput,
+  type SignetRequestResponseReader,
+  verifyRespondBidirectionalEvent,
+} from "@sig-net/midnight";
+import { readVaultLedger } from "@sig-net/midnight-examples-erc20-vault-contract";
+
+import { EMPTY_OUTPUT } from "../empty-output.ts";
+import { type ObservedExecution, observeExecution } from "../observed-execution.ts";
+import { OutputSource } from "../output-source.ts";
+import type { PollProgress } from "../poll-progress.ts";
+import { createResponseReader, type VaultContext } from "../vault-context.ts";
+import { warnOnce } from "../warn-once.ts";
+
+/** What the MPC attested for a request, resolved by verifying its posts. */
+export interface RespondOutcome {
+  /**
+   * The attested event whose signature verified and whose attested width and
+   * hash match `serializedOutput`. Its `outputKind` is the MPC's verified
+   * verdict and its `requestId` the request a settle circuit consumes.
+   */
+  readonly event: RespondBidirectionalEvent;
+  /**
+   * The output bytes the attestation commits to (a circuit argument): the
+   * MPC's Borsh serialisation of an executed transaction's decoded output
+   * (empty under an empty output schema), and empty under a failure kind.
+   */
+  readonly serializedOutput: Uint8Array;
+  /**
+   * True only when the verified kind is executed AND the bytes are the ones a
+   * succeeded call attests under the request's output schema (see
+   * {@link executedSuccessOutput}). The vault's ERC20 transfer and approve
+   * schema is a single bool, so `succeeded: false` beside an executed kind
+   * means the call executed and returned false. A nonce replacement's schema
+   * is empty, so its executed attestation always succeeded. A swap's, supply's
+   * or redeem's output is a value with no success flag, so `succeeded` is
+   * false for them and their flows read the attested value.
+   */
+  readonly succeeded: boolean;
+}
+
+/** The bytes a source yields this tick, by the kind a post declares. */
+export interface OutputCandidates {
+  /**
+   * What a post declaring an executed transaction is checked over, or
+   * `undefined` when the source cannot yield it this tick.
+   */
+  readonly executed: Uint8Array | undefined;
+  /** What a post declaring a failed or unviable transaction is checked over. */
+  readonly failure: Uint8Array;
+}
+
+/**
+ * What one attestation poll resolves once and every later tick of
+ * {@link fetchAttestedRespondOutcome} reuses: the reader, whose
+ * request-record cache a rebuild would throw away, the response key the
+ * vault pinned at initialise (written once, never rewritten), and the
+ * candidates once the source has yielded the executed one, which an
+ * execution fixes for good.
+ */
+export class RespondPollMemo {
+  /** The reader over the request map the poll targets. */
+  readonly reader: SignetRequestResponseReader;
+  /** The vault's pinned response key, once read. */
+  mpcResponseKey: Secp256k1Point | undefined;
+  /** The source's candidates, once the executed one is among them. */
+  candidates: OutputCandidates | undefined;
+
+  /**
+   * Start a memo over the poll's reader.
+   *
+   * @param reader - The reader over the request map the poll targets.
+   */
+  constructor(reader: SignetRequestResponseReader) {
+    this.reader = reader;
+  }
+}
+
+/**
+ * Record a per-tick failure where the caller reads diagnostics: the
+ * enclosing poll's progress when there is one, else the console, once per
+ * condition and request.
+ *
+ * @param progress - The enclosing poll's diagnostics, if any.
+ * @param key - Stable condition identifier.
+ * @param requestId - The request the condition concerns.
+ * @param message - What went wrong this tick.
+ */
+function reportTickFailure(
+  progress: PollProgress | undefined,
+  key: string,
+  requestId: RequestIdHex,
+  message: string,
+): void {
+  if (progress === undefined) {
+    warnOnce(
+      `${key}:${requestId}`,
+      `${message} (request ${requestId}, retried on the next poll tick)`,
+    );
+    return;
+  }
+  progress.failure(key, message);
+}
+
+// How long one poll tick waits on the trace. Deliberately short: the OUTER
+// poll loop (pollRespondBidirectional's timeoutMs and intervalMs) owns the
+// deadline, so a tick that cannot observe gives up fast and lets the next
+// tick retry.
+const OBSERVATION_TICK_TIMEOUT_MS = 3_000;
+
+/**
+ * The {@link OutputSource.EVMNode} candidates. The executed candidate is the
+ * observed execution's raw output decoded per the request's output schema and
+ * Borsh-serialised as the MPC does (the exact conversions it ran), built only
+ * when a post declares an executed transaction: it needs an executed
+ * transaction, and a schema the return data disagrees with (for example empty
+ * `0x` return data from a non-bool ERC20 under the bool schema) drops it with
+ * a warning. The failure candidate is the empty output and needs no
+ * observation at all.
+ *
+ * @param context - The flow context, whose EVM endpoint serves the trace.
+ * @param reader - The reader over the request map, which rebuilds the mined transaction.
+ * @param requestId - The request whose execution result to recompute.
+ * @param outputSchema - The request's output schema as JSON text.
+ * @param executedDeclared - Whether any post declares an executed transaction.
+ * @param progress - The enclosing poll's diagnostics, if any.
+ * @returns The candidates, the executed one `undefined` when no post asks
+ *   for it or the execution could not be observed this tick.
+ */
+async function evmNodeCandidates(
+  context: VaultContext,
+  reader: SignetRequestResponseReader,
+  requestId: RequestIdHex,
+  outputSchema: string,
+  executedDeclared: boolean,
+  progress: PollProgress | undefined,
+): Promise<OutputCandidates> {
+  if (!executedDeclared) {
+    return { executed: undefined, failure: EMPTY_OUTPUT };
+  }
+  let observed: ObservedExecution;
+  try {
+    observed = await observeExecution(
+      reader,
+      context.evmRpcUrl,
+      requestId,
+      OBSERVATION_TICK_TIMEOUT_MS,
+    );
+  } catch (error) {
+    reportTickFailure(
+      progress,
+      "observation",
+      requestId,
+      `execution observation failed: ${String(error)}`,
+    );
+    return { executed: undefined, failure: EMPTY_OUTPUT };
+  }
+  if (!observed.success || observed.trace === null) {
+    return { executed: undefined, failure: EMPTY_OUTPUT };
+  }
+  try {
+    return {
+      executed: executedEvmRespondOutput(outputSchema, observed.isContractCall, observed.trace),
+      failure: EMPTY_OUTPUT,
+    };
+  } catch (error) {
+    reportTickFailure(
+      progress,
+      "decode",
+      requestId,
+      `execution output decode failed, checking failure posts only: ${String(error)}`,
+    );
+    return { executed: undefined, failure: EMPTY_OUTPUT };
+  }
+}
+
+/**
+ * The {@link OutputSource.MPCCache} candidates: the object the MPC cached for
+ * the request, verbatim, whatever kind a post declares. The cache holds
+ * exactly the bytes the attestation commits to, empty for a failure.
+ *
+ * @param cache - The reader over the MPC's output cache.
+ * @param requestId - The request whose attested output to fetch.
+ * @param progress - The enclosing poll's diagnostics, if any.
+ * @returns The candidates, or `undefined` when the cache holds no object yet
+ *   or could not be read this tick.
+ */
+async function mpcCacheCandidates(
+  cache: MpcOutputCacheReader,
+  requestId: RequestIdHex,
+  progress: PollProgress | undefined,
+): Promise<OutputCandidates | undefined> {
+  let cached: Uint8Array | undefined;
+  try {
+    cached = await cache.fetchSerializedOutput(requestId);
+  } catch (error) {
+    reportTickFailure(
+      progress,
+      "cache",
+      requestId,
+      `MPC output cache read failed: ${String(error)}`,
+    );
+    return undefined;
+  }
+  if (cached === undefined) {
+    reportTickFailure(
+      progress,
+      "cache-miss",
+      requestId,
+      `MPC output cache holds no object yet at ${cache.objectUrl(requestId)}`,
+    );
+    return undefined;
+  }
+  return { executed: cached, failure: cached };
+}
+
+/**
+ * The candidate outputs `outputSource` yields for the request this tick.
+ *
+ * @param context - The flow context.
+ * @param reader - The reader over the request map.
+ * @param requestId - The request to resolve.
+ * @param outputSource - Where to obtain the attested output from.
+ * @param outputSchema - The request's output schema as JSON text.
+ * @param executedDeclared - Whether any post declares an executed transaction.
+ * @param progress - The enclosing poll's diagnostics, if any.
+ * @returns The candidates, or `undefined` when the source could not yield
+ *   them this tick.
+ * @throws {Error} When {@link OutputSource.MPCCache} is asked of a context
+ *   configured without a cache (`MPC_OUTPUT_CACHE_URL` unset).
+ */
+function candidatesFromSource(
+  context: VaultContext,
+  reader: SignetRequestResponseReader,
+  requestId: RequestIdHex,
+  outputSource: OutputSource,
+  outputSchema: string,
+  executedDeclared: boolean,
+  progress: PollProgress | undefined,
+): Promise<OutputCandidates | undefined> {
+  switch (outputSource) {
+    case OutputSource.EVMNode:
+      return evmNodeCandidates(
+        context,
+        reader,
+        requestId,
+        outputSchema,
+        executedDeclared,
+        progress,
+      );
+    case OutputSource.MPCCache: {
+      if (context.mpcOutputCache === undefined) {
+        throw new Error(
+          `${OutputSource.MPCCache} needs MPC_OUTPUT_CACHE_URL set: the MPC's output cache URL down to its object prefix`,
+        );
+      }
+      return mpcCacheCandidates(context.mpcOutputCache, requestId, progress);
+    }
+  }
+}
+
+/**
+ * The bytes a succeeded call attests under `outputSchema`, read off the Borsh
+ * schema the SDK derives from it: a single `bool` field attests the EVM `true`
+ * word run through the MPC's decode and serialise (so the comparison needs no
+ * knowledge of the field's name), and an empty schema attests the empty output.
+ * Any other schema carries a value with no success flag, so no bytes mean
+ * "succeeded".
+ *
+ * @param outputSchema - The request's output schema as JSON text.
+ * @returns The attested bytes of a succeeded call, or `undefined` when the
+ *   schema carries no success flag.
+ */
+function executedSuccessOutput(outputSchema: string): Uint8Array | undefined {
+  const derived = deriveRespondSchema(outputSchema);
+  const members =
+    typeof derived === "string" || !("struct" in derived) ? [] : Object.values(derived.struct);
+  if (members.length === 0) {
+    return EMPTY_OUTPUT;
+  }
+  if (members.length === 1 && members[0] === "bool") {
+    return serializeRespondOutput(
+      outputSchema,
+      deserializeEvmOutput(outputSchema, boolAbiWord(true)),
+    );
+  }
+  return undefined;
+}
+
+/**
+ * Whether two byte strings are identical.
+ *
+ * @param left - One byte string.
+ * @param right - The other.
+ * @returns True when both have the same length and bytes.
+ */
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  return left.length === right.length && left.every((byte, index) => byte === right[index]);
+}
+
+/**
+ * Resolve the attested outcome for `requestId`: fetch the posted
+ * RespondBidirectionalEvents, obtain the candidate serialised outputs from
+ * `outputSource`, and return the first event whose signature verifies
+ * against the response key the vault pinned at initialise and whose attested
+ * width and hash match the candidate its declared kind selects.
+ *
+ * Under {@link OutputSource.EVMNode} the executed candidate is recomputed
+ * from the mined transaction's trace with the request's own output schema
+ * and the failure candidate is the empty output; under
+ * {@link OutputSource.MPCCache} every post is checked over the
+ * object the MPC cached before it posted. The respond events are
+ * unauthenticated (anyone may post), so that check is what selects a
+ * trustworthy record here. `queueAttestation` runs the same signature check
+ * in-circuit and the complete circuit checks the bytes against the attested
+ * width and hash, which remain the actual authentication gate.
+ *
+ * A source failure inside one call (a trace that times out, a cache object
+ * not written yet) logs once and yields `undefined`, so the caller's poll
+ * loop (its own timeoutMs/intervalMs) owns the deadline: this function never
+ * blocks a tick beyond a short trace timeout.
+ *
+ * @param context - The flow context.
+ * @param requestId - The request id to resolve.
+ * @param outputSource - Where to obtain the attested serialised output from.
+ * @param outputSchema - The request's output schema, as JSON text read off its
+ *   on-ledger record: what the MPC ran.
+ * @param requestsPath - The resolved ledger-tree path of the map holding the
+ *   request. Defaults to `VAULT_DEPOSIT_REQUESTS_PATH`.
+ * @param progress - Optional diagnostics for the enclosing poll.
+ * @param memo - The enclosing poll's {@link RespondPollMemo}, so later ticks
+ *   skip the ledger read and the observation this one resolved; a single
+ *   call resolves everything afresh when omitted.
+ * @returns The verified outcome, or `undefined` when no attestation has been
+ *   posted yet, none verifies over its candidate, or the source could not
+ *   yield the candidates this tick.
+ * @throws {Error} When {@link OutputSource.MPCCache} is asked of a context
+ *   configured without a cache (`MPC_OUTPUT_CACHE_URL` unset).
+ */
+export async function fetchAttestedRespondOutcome(
+  context: VaultContext,
+  requestId: RequestIdHex,
+  outputSource: OutputSource,
+  outputSchema: string,
+  requestsPath?: readonly number[],
+  progress?: PollProgress,
+  memo: RespondPollMemo = new RespondPollMemo(createResponseReader(context, requestsPath)),
+): Promise<RespondOutcome | undefined> {
+  const events = await memo.reader.getRespondBidirectionalEvents(requestId);
+  progress?.update(`${String(events.length)} attestation posts observed`);
+  if (events.length === 0) {
+    return undefined;
+  }
+
+  // The key the queue circuit will verify against, read from the vault's own
+  // ledger: checking off-chain against anything else risks accepting a post
+  // that cannot prove.
+  memo.mpcResponseKey ??= (
+    await readVaultLedger(context.providers.publicDataProvider, context.vaultContractAddress)
+  ).mpcResponseKey;
+  const mpcResponseKey = memo.mpcResponseKey;
+
+  // An attestation is posted, so the transaction is final. A node that keeps
+  // the MPC cache wrote its bytes before posting, but the object may not be
+  // readable yet.
+  // UNTRUSTED until the verification below.
+  const candidates =
+    memo.candidates ??
+    (await candidatesFromSource(
+      context,
+      memo.reader,
+      requestId,
+      outputSource,
+      outputSchema,
+      events.some((posted) => posted.outputKind === OutputKind.executed),
+      progress,
+    ));
+  if (candidates === undefined) {
+    return undefined;
+  }
+  // An execution has one observation and the cache holds one object, so the
+  // candidates are final once the executed one is in hand.
+  if (candidates.executed !== undefined) {
+    memo.candidates = candidates;
+  }
+
+  const successOutput = executedSuccessOutput(outputSchema);
+  for (const event of events) {
+    const serializedOutput =
+      event.outputKind === OutputKind.executed ? candidates.executed : candidates.failure;
+    if (
+      serializedOutput !== undefined &&
+      verifyRespondBidirectionalEvent(serializedOutput, event, mpcResponseKey)
+    ) {
+      return {
+        event,
+        serializedOutput,
+        succeeded:
+          event.outputKind === OutputKind.executed &&
+          successOutput !== undefined &&
+          bytesEqual(serializedOutput, successOutput),
+      };
+    }
+  }
+  progress?.update(`${String(events.length)} attestation posts rejected`);
+  progress?.failure(
+    "verification",
+    `no signature verifies against the vault response key and the ${outputSource} output`,
+  );
+  return undefined;
+}

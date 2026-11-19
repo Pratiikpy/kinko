@@ -1,0 +1,110 @@
+// `addAllowedToken`: the deployer's call adding an ERC20, with its per-action
+// fees, to the map the vault lets users deposit and swap into. `initialise`
+// allows the stata pair itself, so every other ERC20 a deployment moves must be
+// added here before its first deposit or swap. The map only grows: no circuit
+// removes a token.
+
+import type { PublicDataProvider } from "@midnight-ntwrk/midnight-js/types";
+import type { WalletRegistry } from "@sig-net/midnight-contract-deploy";
+import {
+  type DeployedVaultContract,
+  evmAddressBytes,
+  readVaultLedger,
+} from "@sig-net/midnight-examples-erc20-vault-contract";
+
+import { resolveVaultContractAddress, withDeployerVault } from "./deployer-vault.ts";
+import { resolveAllowedTokens } from "./evm-targets.ts";
+import {
+  feeRunSettings,
+  formatTokenFees,
+  resolveTokenFeesFor,
+  type TokenFeesByToken,
+} from "./fee-config.ts";
+
+/**
+ * Call the vault's `addAllowedToken` circuit once for each of `tokens` the
+ * ledger does not already allow, so a rerun against a kept vault submits
+ * nothing for the tokens an earlier run added.
+ *
+ * The caller must hold the DEPLOYER identity: the circuit compares the
+ * `callerSecretKey` witness commitment against the sealed `deployer` field.
+ *
+ * @param vault - The joined vault contract handle.
+ * @param publicDataProvider - The provider to read the vault's current ledger state through.
+ * @param vaultContractAddress - The vault contract's address (the state to read).
+ * @param tokens - The ERC20s to allow, each with the fees stamped on it, from
+ *   {@link resolveTokenFeesFor} over {@link resolveAllowedTokens}.
+ * @returns The ERC20s this call added, as lowercased 0x hex in `tokens` order.
+ * @throws {Error} If the vault is not initialised, a token is malformed, or the circuit
+ *   rejects the caller.
+ */
+export async function addAllowedTokensToVaultContract(
+  vault: DeployedVaultContract,
+  publicDataProvider: PublicDataProvider,
+  vaultContractAddress: string,
+  tokens: TokenFeesByToken,
+): Promise<readonly string[]> {
+  const state = await readVaultLedger(publicDataProvider, vaultContractAddress);
+  if (!state.initialised) {
+    throw new Error("the vault is not initialised: run `yarn initialise:erc20-vault` first");
+  }
+  const added: string[] = [];
+  for (const [token, fees] of tokens) {
+    const tokenBytes = evmAddressBytes(token);
+    if (state.allowedTokens.member(tokenBytes)) {
+      console.log(`ERC20 ${token} is already allowed, skipping`);
+      continue;
+    }
+    const result = await vault.callTx.addAllowedToken(tokenBytes, fees);
+    console.log(
+      `allowed ERC20 ${token} (fees ${formatTokenFees(fees)}) in tx ${result.public.txId}`,
+    );
+    added.push(token);
+  }
+  return added;
+}
+
+/**
+ * Join a deployed vault as the deployer and allow every ERC20
+ * `EVM_ALLOWED_TOKENS` lists, each with the fees {@link resolveTokenFeesFor}
+ * reads: the standalone counterpart of {@link addAllowedTokensToVaultContract}
+ * for entrypoints that hold no session. An empty list starts no wallet.
+ *
+ * @param env - The environment: `EVM_ALLOWED_TOKENS`, `VAULT_TOKEN_FEES`, the flat fee
+ *   variables and everything {@link withDeployerVault} reads. Defaults to `process.env`.
+ * @param contractAddress - The vault to configure. Defaults to `MIDNIGHT_VAULT_CONTRACT_ADDRESS`.
+ * @param wallets - A registry to take the deployer wallet from, when the caller keeps wallets
+ *   open across steps. Without one the wallet is opened for this call and closed after it.
+ * @returns The ERC20s this call added.
+ * @throws {WalletUnfundedError} If the deployer wallet holds neither NIGHT nor
+ *   DUST: the error carries the wallet's NIGHT receive address to fund.
+ * @throws {Error} If no contract address is available, `EVM_ALLOWED_TOKENS` or a fee
+ *   variable is malformed or missing, the vault is not initialised, or the circuit rejects
+ *   the caller.
+ */
+export async function addAllowedTokensToVault(
+  env: Record<string, string | undefined> = process.env,
+  contractAddress?: string,
+  wallets?: WalletRegistry,
+): Promise<readonly string[]> {
+  const vaultContractAddress = resolveVaultContractAddress(
+    env,
+    contractAddress,
+    "add allowed ERC20s to",
+  );
+  const allowedTokens = resolveAllowedTokens(env);
+  const tokens = resolveTokenFeesFor(env, allowedTokens);
+  if (tokens.size === 0) {
+    console.log("EVM_ALLOWED_TOKENS lists no ERC20s, nothing to allow");
+    return [];
+  }
+  return withDeployerVault(
+    env,
+    vaultContractAddress,
+    "allowing ERC20s on",
+    { EVM_ALLOWED_TOKENS: allowedTokens.join(","), ...feeRunSettings(env) },
+    (vault, publicDataProvider) =>
+      addAllowedTokensToVaultContract(vault, publicDataProvider, vaultContractAddress, tokens),
+    wallets,
+  );
+}
