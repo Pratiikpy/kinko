@@ -30,33 +30,17 @@
   "tags": {
     "contractAddress": "8cc4d90796c02827c52154a53d68b415e531a8aa87d203ccb8a6934a0eac99e1",
     "txId": "007b0f0f8a3dc2db4e606887e1db2da5f312e15ddbf3fb3d541e006a5cc685bbe9",
-    "circuits": [
-      "register_tag",
-      "release_tag",
-      "update_tag_keys",
-      "transfer_tag"
-    ]
+    "circuits": ["register_tag", "release_tag", "update_tag_keys", "transfer_tag"]
   },
   "gift": {
     "contractAddress": "d7c38b41ec3e65b5ef81851da07ee06de8cef231710d2103b58e4acd4a8dee7d",
     "txId": "00e01c07043d862949cb06b22b4acd2787188b44db7ee366dcecd194fb3bc35bce",
-    "circuits": [
-      "issue",
-      "card_voided",
-      "card_issued",
-      "void_card"
-    ]
+    "circuits": ["issue", "card_voided", "card_issued", "void_card"]
   },
   "disclosure": {
     "contractAddress": "37fb8cfde520ce7589f7cda4ca073f47e75d011ad4b87a194242f6c90123e4f8",
     "txId": "00052b98f30f5ea34071329c3723ee466bdc01529489b4d24de951be6b42094737",
-    "circuits": [
-      "file_record",
-      "approve_case",
-      "revoke_examiner",
-      "open_case",
-      "register_examiner"
-    ]
+    "circuits": ["file_record", "approve_case", "revoke_examiner", "open_case", "register_examiner"]
   },
   "deployedAt": "2026-11-20T18:49:08.441Z"
 }
