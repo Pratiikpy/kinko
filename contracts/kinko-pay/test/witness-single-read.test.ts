@@ -25,6 +25,7 @@ import {
   NATIVE,
   OWNER,
   PAYOUT,
+  REFUND_ENC,
   SALT,
   TokenKind,
 } from "./pay-fixtures.ts";
@@ -70,7 +71,7 @@ const FROM_LINK = {
   merchant_key: 1,
   merchant_payout: 1,
 };
-const PAYER = { payer_key: 1, payer_refund: 1, payment_index: 1 };
+const PAYER = { payer_key: 1, payer_refund: 1, payer_refund_enc: 1, payment_index: 1 };
 
 const colourOf = (token: (typeof TokenKind)[keyof typeof TokenKind]) =>
   token === TokenKind.KUSD ? KUSD : NATIVE;
@@ -196,6 +197,7 @@ describe("each witness is read exactly once per circuit", () => {
       attestedPayouts: [PAYOUT, PAYOUT, PAYOUT, PAYOUT],
       attestedPayers: PAYERS,
       attestedRefunds: REFUNDS,
+      attestedEncs: [REFUND_ENC, REFUND_ENC, REFUND_ENC, REFUND_ENC],
       attestedIndices: [0n, 0n, 0n, 0n],
       attestedPaths: receipts.map((receipt) => {
         const path = ledgerOf(h).receipt_tree.findPathForLeaf(receipt);
@@ -216,6 +218,7 @@ describe("each witness is read exactly once per circuit", () => {
       attested_payers: 1,
       attested_payouts: 1,
       attested_refunds: 1,
+      attested_encs: 1,
       attested_salts: 1,
       merchant_key: 1,
     });
@@ -277,6 +280,7 @@ describe("each witness is read exactly once per circuit", () => {
       batch_salts: 1,
       payer_key: 1,
       payer_refund: 1,
+      payer_refund_enc: 1,
     });
   });
 });

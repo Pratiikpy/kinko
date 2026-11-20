@@ -20,10 +20,11 @@ import type { PaymentRecord } from "../../lib/records.ts";
 import { useAccount } from "../../state/account.tsx";
 
 function proofLink(p: PaymentRecord): string | null {
-  if (!p.invoiceLink || !p.payerKey || !p.refundTo || p.index === undefined) return null;
+  if (!p.invoiceLink || !p.payerKey || !p.refundTo || !p.refundEnc || p.index === undefined)
+    return null;
   const link = parsePaymentLink(p.invoiceLink);
   if (!link) return null;
-  return `${window.location.origin}/verify#${encodeReceiptProof({ contract: link.contractAddress, terms: link.terms, payerKey: p.payerKey, refundTo: p.refundTo, index: BigInt(p.index), title: link.meta.title })}`;
+  return `${window.location.origin}/verify#${encodeReceiptProof({ contract: link.contractAddress, terms: link.terms, payerKey: p.payerKey, refundTo: p.refundTo, refundEnc: p.refundEnc, index: BigInt(p.index), title: link.meta.title })}`;
 }
 
 /**
@@ -31,21 +32,24 @@ function proofLink(p: PaymentRecord): string | null {
  * shown once when the payment is made; this lets a payer who lost it ask for the refund anyway.
  * It carries what was paid, which for a NIGHT invoice is the KUSD at the quoted rate.
  */
-function refundCodeOf(p: PaymentRecord, encryptionPublicKey: string | undefined): string | null {
-  if (!p.receipt || !p.payerKey || !p.refundTo || p.index === undefined || !encryptionPublicKey)
+function refundCodeOf(p: PaymentRecord): string | null {
+  if (!p.receipt || !p.payerKey || !p.refundTo || !p.refundEnc || p.index === undefined)
     return null;
   return encodeRefundCode(
-    { payerKey: fromHex(p.payerKey), refundTo: fromHex(p.refundTo), index: BigInt(p.index) },
-    fromHex(encryptionPublicKey),
+    {
+      payerKey: fromHex(p.payerKey),
+      refundTo: fromHex(p.refundTo),
+      refundEnc: fromHex(p.refundEnc),
+      index: BigInt(p.index),
+    },
     BigInt(p.amount),
   );
 }
 
 function Row({ p }: { p: PaymentRecord }) {
-  const { account } = useAccount();
   const [open, setOpen] = useState(false);
   const proof = proofLink(p);
-  const refundCode = refundCodeOf(p, account?.encryptionPublicKey);
+  const refundCode = refundCodeOf(p);
   return (
     <li className="py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -87,9 +91,9 @@ function Row({ p }: { p: PaymentRecord }) {
         <div className="mt-3 space-y-3 rounded-xl bg-surface-2 p-4">
           <p className="text-sm text-ink-2">
             Send this link to whoever needs proof. It shows this one payment, its amount and the
-            invoice it paid. It reveals no other payment of yours, and no balance. It also holds
-            what is needed to write a refund request for this payment, so give it only to someone
-            you trust not to send the merchant a request that cannot be paid to you.
+            invoice it paid. It reveals no other payment of yours, and no balance. Where a refund of
+            this payment would go is fixed in the receipt, so the link cannot be used to send one
+            anywhere else.
           </p>
           {proof ? (
             <Copyable value={proof} label="Proof link" />

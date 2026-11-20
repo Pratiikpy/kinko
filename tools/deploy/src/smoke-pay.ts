@@ -165,6 +165,7 @@ try {
 
   const payment = newPaymentSecrets(
     new Uint8Array(Buffer.from(p.walletProvider.getCoinPublicKey(), "hex")),
+    new Uint8Array(Buffer.from(p.walletProvider.getEncryptionPublicKey(), "hex")),
   );
   const pc = await timed("payer joins kinko_pay", () =>
     findDeployedContract(
@@ -177,6 +178,7 @@ try {
           ...base,
           payerKey: payment.payerKey,
           payerRefund: { bytes: payment.refundTo },
+          payerRefundEnc: payment.refundEnc,
           paymentIndex: payment.index,
         },
       } as never,

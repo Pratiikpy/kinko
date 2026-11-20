@@ -25,6 +25,7 @@ import {
   OWNER,
   PAYER,
   PAYOUT,
+  REFUND_ENC,
   REFUND_TO,
   SALT,
   TokenKind,
@@ -164,6 +165,7 @@ describe("settle_invoice: standard", () => {
     const offChain = receiptOf(commitment, InvoiceKind.STANDARD, {
       payerKey: PAYER,
       refundTo: REFUND_TO,
+      refundEnc: REFUND_ENC,
       index: 9n,
     });
     expect(hex(receipt)).toBe(hex(offChain));

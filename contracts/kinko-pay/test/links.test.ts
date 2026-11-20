@@ -95,7 +95,7 @@ describe("payment links", () => {
       fail("link did not decode");
     expect(hex(invoiceCommitmentOf(decoded.terms))).toBe(hex(commitment));
     // A payer with nothing but the link and their own keys.
-    const payment = newPaymentSecrets(bytes32(0x61));
+    const payment = newPaymentSecrets(bytes32(0x61), bytes32(0x62));
     h.privateState = {
       ...base(),
       merchantKey: decoded.terms.merchantKey,
@@ -107,6 +107,7 @@ describe("payment links", () => {
       ownerSecret: new Uint8Array(32),
       payerKey: payment.payerKey,
       payerRefund: { bytes: payment.refundTo },
+      payerRefundEnc: payment.refundEnc,
     };
     await h.call("settle_invoice", InvoiceKind.MULTIPAY, TokenKind.KUSD, coin(AMOUNT, KUSD));
     expect(ledgerOf(h).spent.member(nullifierOf(commitment, InvoiceKind.MULTIPAY, payment))).toBe(
@@ -185,7 +186,9 @@ describe("input validation before a call", () => {
     expect(() => {
       assertInvoiceTerms({ ...TERMS, token: 9 as never });
     }).toThrow(/unknown token/);
-    expect(() => newPaymentSecrets(bytes32(1), 1n << 32n)).toThrow(/index is out of range/);
+    expect(() => newPaymentSecrets(bytes32(1), bytes32(2), 1n << 32n)).toThrow(
+      /index is out of range/,
+    );
   });
 
   it("draws fresh, independent secrets", () => {

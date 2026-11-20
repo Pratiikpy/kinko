@@ -116,9 +116,9 @@ export function InvoicePayment({
         {
           payerKey: fromHex(out.payerKey),
           refundTo: fromHex(out.refundTo),
+          refundEnc: fromHex(out.refundEnc),
           index: out.index,
         },
-        fromHex(account.encryptionPublicKey),
         out.paid,
       );
       await update((doc) =>
@@ -136,6 +136,7 @@ export function InvoicePayment({
           receipt: out.receipt,
           payerKey: out.payerKey,
           refundTo: out.refundTo,
+          refundEnc: out.refundEnc,
           index: out.index.toString(),
           memo: meta.memo,
         }),

@@ -69,8 +69,12 @@ export function PayWithCard({
         receipt: out.receipt,
         // A refund goes back to the card, so the code names the card's key.
         refundCode: encodeRefundCode(
-          { payerKey: fromHex(out.payerKey), refundTo: fromHex(out.refundTo), index: out.index },
-          fromHex(card.encryptionPublicKey),
+          {
+            payerKey: fromHex(out.payerKey),
+            refundTo: fromHex(out.refundTo),
+            refundEnc: fromHex(out.refundEnc),
+            index: out.index,
+          },
           out.paid,
         ),
       });

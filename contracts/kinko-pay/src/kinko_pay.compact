@@ -239,6 +239,13 @@ witness payer_key(): Bytes<32>;
 // can only ever refund to the key the payer named when paying.
 witness payer_refund(): ZswapCoinPublicKey;
 
+// The encryption public key the payer's wallet decrypts coins with. A refund
+// coin is encrypted to it, so a coin encrypted to any other key is one the payer
+// cannot read. Bound into the receipt with the refund key, so the key a merchant
+// encrypts a refund to is the one the payer named when paying, and nobody who
+// holds a proof of the payment can supply another.
+witness payer_refund_enc(): Bytes<32>;
+
 // Distinguishes deliberate repeat contributions to a multipay or donation
 // invoice from a replay of the same one. Pinned to 0 for STANDARD.
 witness payment_index(): Uint<32>;
@@ -320,18 +327,21 @@ export pure circuit settle_nullifier(
 }
 
 // A payment receipt, publishable as proof that a payment occurred without
-// revealing its amount or the payer. It also fixes where a refund may go.
+// revealing its amount or the payer. It also fixes where a refund may go and
+// which key it is encrypted to.
 export pure circuit receipt_digest(
   commitment: Bytes<32>,
   payer: Bytes<32>,
   refund_to: Bytes<32>,
+  refund_enc: Bytes<32>,
   index: Uint<32>
 ): Bytes<32> {
-  return persistentHash<Vector<5, Bytes<32>>>([
+  return persistentHash<Vector<6, Bytes<32>>>([
     domain_receipt(),
     commitment,
     payer,
     refund_to,
+    refund_enc,
     persistentHash<Uint<32>>(index)
   ]);
 }
@@ -478,6 +488,7 @@ circuit record_settlement(
   kind: InvoiceKind,
   payer: Bytes<32>,
   refund_to: Bytes<32>,
+  refund_enc: Bytes<32>,
   index: Uint<32>
 ): Bytes<32> {
   assert(invoices.member(commitment), "unknown invoice");
@@ -492,7 +503,7 @@ circuit record_settlement(
   assert(!spent.member(nullifier), "payment already settled");
   spent.insert(nullifier);
 
-  const receipt = disclose(receipt_digest(commitment, payer, refund_to, index));
+  const receipt = disclose(receipt_digest(commitment, payer, refund_to, refund_enc, index));
   receipts.insert(receipt);
   receipt_tree.insert(receipt);
 
@@ -587,7 +598,7 @@ export circuit settle_invoice(
   const payout = merchant_payout();
   const commitment = disclose(link_commitment(kind, token, amount, payout));
   const index = disclose(pinned_index(kind, payment_index()));
-  const receipt = record_settlement(commitment, kind, payer_key(), payer_refund().bytes, index);
+  const receipt = record_settlement(commitment, kind, payer_key(), payer_refund().bytes, payer_refund_enc(), index);
 
   check_coin(coin, amount, token);
   forward(coin, payout);
@@ -709,7 +720,7 @@ export circuit settle_invoice_converted(
   const commitment = disclose(link_commitment(kind, invoice_token, amount, payout));
   const index = disclose(pinned_index(kind, payment_index()));
   const payer = payer_key();
-  const receipt = record_settlement(commitment, kind, payer, payer_refund().bytes, index);
+  const receipt = record_settlement(commitment, kind, payer, payer_refund().bytes, payer_refund_enc(), index);
 
   // A stale quote is refused, or a payer could hold a favourable quote
   // indefinitely. Disclosed deliberately: a quote's expiry says nothing about
@@ -774,7 +785,7 @@ export circuit refund_payment(
 
   const index = disclose(pinned_index(kind, payment_index()));
   const refund_to = payer_refund();
-  const receipt = disclose(receipt_digest(commitment, payer_key(), refund_to.bytes, index));
+  const receipt = disclose(receipt_digest(commitment, payer_key(), refund_to.bytes, payer_refund_enc(), index));
   assert(receipts.member(receipt), "no such payment");
   assert(
     !converted_marks.member(disclose(conversion_mark(receipt))),
@@ -829,7 +840,7 @@ export circuit refund_converted(
   const index = disclose(pinned_index(kind, payment_index()));
   const payer = payer_key();
   const refund_to = payer_refund();
-  const receipt = disclose(receipt_digest(commitment, payer, refund_to.bytes, index));
+  const receipt = disclose(receipt_digest(commitment, payer, refund_to.bytes, payer_refund_enc(), index));
   assert(receipts.member(receipt), "no such payment");
 
   const paid = converted_amount();
@@ -876,6 +887,7 @@ witness attested_salts(): Vector<4, Bytes<32>>;
 witness attested_payouts(): Vector<4, Bytes<32>>;
 witness attested_payers(): Vector<4, Bytes<32>>;
 witness attested_refunds(): Vector<4, Bytes<32>>;
+witness attested_encs(): Vector<4, Bytes<32>>;
 witness attested_indices(): Vector<4, Uint<32>>;
 witness attested_paths(): Vector<4, MerkleTreePath<24, Bytes<32>>>;
 
@@ -891,11 +903,12 @@ circuit verify_attested_payment(
   payout: Bytes<32>,
   payer: Bytes<32>,
   refund_to: Bytes<32>,
+  refund_enc: Bytes<32>,
   index: Uint<32>,
   path: MerkleTreePath<24, Bytes<32>>
 ): Bytes<32> {
   const commitment = invoice_commitment(merchant, payout, amount, kind, token, salt, owner);
-  const receipt = receipt_digest(commitment, payer, refund_to, index);
+  const receipt = receipt_digest(commitment, payer, refund_to, refund_enc, index);
 
   // Bind the path to this receipt, or it could belong to any other payment and
   // the amount beside it would be unconstrained.
@@ -929,13 +942,14 @@ export circuit attest_revenue_at_least(
   const payouts = attested_payouts();
   const payers = attested_payers();
   const refunds = attested_refunds();
+  const encs = attested_encs();
   const indices = attested_indices();
   const paths = attested_paths();
 
-  const r0 = verify_attested_payment(merchant, kind, token, amounts[0], salts[0], owners[0], payouts[0], payers[0], refunds[0], indices[0], paths[0]);
-  const r1 = verify_attested_payment(merchant, kind, token, amounts[1], salts[1], owners[1], payouts[1], payers[1], refunds[1], indices[1], paths[1]);
-  const r2 = verify_attested_payment(merchant, kind, token, amounts[2], salts[2], owners[2], payouts[2], payers[2], refunds[2], indices[2], paths[2]);
-  const r3 = verify_attested_payment(merchant, kind, token, amounts[3], salts[3], owners[3], payouts[3], payers[3], refunds[3], indices[3], paths[3]);
+  const r0 = verify_attested_payment(merchant, kind, token, amounts[0], salts[0], owners[0], payouts[0], payers[0], refunds[0], encs[0], indices[0], paths[0]);
+  const r1 = verify_attested_payment(merchant, kind, token, amounts[1], salts[1], owners[1], payouts[1], payers[1], refunds[1], encs[1], indices[1], paths[1]);
+  const r2 = verify_attested_payment(merchant, kind, token, amounts[2], salts[2], owners[2], payouts[2], payers[2], refunds[2], encs[2], indices[2], paths[2]);
+  const r3 = verify_attested_payment(merchant, kind, token, amounts[3], salts[3], owners[3], payouts[3], payers[3], refunds[3], encs[3], indices[3], paths[3]);
 
   // Distinct payments only, or one payment could be counted four times.
   assert(r0 != r1 && r0 != r2 && r0 != r3 && r1 != r2 && r1 != r3 && r2 != r3,
@@ -998,10 +1012,11 @@ circuit settle_one(
   index: Uint<32>,
   payer: Bytes<32>,
   refund_to: Bytes<32>,
+  refund_enc: Bytes<32>,
   coin: ShieldedCoinInfo
 ): Bytes<32> {
   const commitment = disclose(invoice_commitment(merchant, payout.bytes, amount, kind, token, salt, owner));
-  const receipt = record_settlement(commitment, kind, payer, refund_to, disclose(pinned_index(kind, index)));
+  const receipt = record_settlement(commitment, kind, payer, refund_to, refund_enc, disclose(pinned_index(kind, index)));
   check_coin(coin, amount, token);
   forward(coin, payout);
   return receipt;
@@ -1020,11 +1035,12 @@ export circuit settle_batch(
   const indices = batch_indices();
   const payer = payer_key();
   const refund_to = payer_refund().bytes;
+  const refund_enc = payer_refund_enc();
 
-  const r0 = settle_one(kind, token, merchants[0], payouts[0], amounts[0], salts[0], owners[0], indices[0], payer, refund_to, coins[0]);
-  const r1 = settle_one(kind, token, merchants[1], payouts[1], amounts[1], salts[1], owners[1], indices[1], payer, refund_to, coins[1]);
-  const r2 = settle_one(kind, token, merchants[2], payouts[2], amounts[2], salts[2], owners[2], indices[2], payer, refund_to, coins[2]);
-  const r3 = settle_one(kind, token, merchants[3], payouts[3], amounts[3], salts[3], owners[3], indices[3], payer, refund_to, coins[3]);
+  const r0 = settle_one(kind, token, merchants[0], payouts[0], amounts[0], salts[0], owners[0], indices[0], payer, refund_to, refund_enc, coins[0]);
+  const r1 = settle_one(kind, token, merchants[1], payouts[1], amounts[1], salts[1], owners[1], indices[1], payer, refund_to, refund_enc, coins[1]);
+  const r2 = settle_one(kind, token, merchants[2], payouts[2], amounts[2], salts[2], owners[2], indices[2], payer, refund_to, refund_enc, coins[2]);
+  const r3 = settle_one(kind, token, merchants[3], payouts[3], amounts[3], salts[3], owners[3], indices[3], payer, refund_to, refund_enc, coins[3]);
 
   return [r0, r1, r2, r3];
 }

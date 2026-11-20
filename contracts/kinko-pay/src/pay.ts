@@ -51,6 +51,11 @@ export interface PaymentSecrets {
   readonly payerKey: Uint8Array;
   /** The payer's coin public key, where a refund goes. */
   readonly refundTo: Uint8Array;
+  /**
+   * The payer's encryption public key, which a refund coin is encrypted to. Bound into the receipt
+   * with `refundTo`, so a refund can only be encrypted to a key the payer can read it with.
+   */
+  readonly refundEnc: Uint8Array;
   readonly index: bigint;
 }
 
@@ -108,13 +113,19 @@ export const newInvoiceSecrets = (): InvoiceSecrets => ({
  * Draw the payer secret for a new payment.
  *
  * @param refundTo - The payer's coin public key, where a refund would go.
+ * @param refundEnc - The payer's encryption public key, which a refund is encrypted to.
  * @param index - The contribution index; 0 for a STANDARD invoice.
  * @returns The payment's secrets.
  */
-export const newPaymentSecrets = (refundTo: Uint8Array, index = 0n): PaymentSecrets => {
+export const newPaymentSecrets = (
+  refundTo: Uint8Array,
+  refundEnc: Uint8Array,
+  index = 0n,
+): PaymentSecrets => {
   checkBytes32(refundTo, "refundTo");
+  checkBytes32(refundEnc, "refundEnc");
   checkUint(index, UINT32_MAX, "index");
-  return { payerKey: randomBytes(), refundTo, index };
+  return { payerKey: randomBytes(), refundTo, refundEnc, index };
 };
 
 /**
@@ -163,6 +174,7 @@ export const receiptOf = (
     commitment,
     payment.payerKey,
     payment.refundTo,
+    payment.refundEnc,
     effectiveIndex(kind, payment.index),
   );
 
@@ -335,83 +347,75 @@ export const decodePaymentLink = (link: string): DecodedPaymentLink | undefined 
 };
 
 interface RefundCodePayload {
-  v: 1 | 2 | 3;
+  v: 4;
   k: string;
   r: string;
+  /** The refund key's encryption public key. */
+  x: string;
   i: string;
-  /** The refund key's encryption public key (version 2). */
-  x?: string;
-  /** What the payer paid, in the smallest unit of the asset they paid (version 3). */
-  a?: string;
+  /** What the payer paid, in the smallest unit of the asset they paid. */
+  a: string;
 }
 
-/** A refund code read back: the payment's secrets and, from version 2, the refund encryption key. */
+/** A refund code read back: the payment's secrets and what was paid. */
 export interface DecodedRefundCode extends PaymentSecrets {
   /**
-   * The encryption public key that belongs to the refund key. The merchant's
-   * wallet needs it to encrypt the refunded coin to the payer.
+   * What the payer paid, in the asset they paid. An invoice priced in one asset and paid in the
+   * other is refunded in this amount, which the merchant cannot work out alone.
    */
-  readonly refundEncryptionKey?: Uint8Array;
-  /**
-   * What the payer paid, in the asset they paid (version 3). An invoice priced in one asset and
-   * paid in the other is refunded in this amount, which the merchant cannot work out alone.
-   */
-  readonly paidAmount?: bigint;
+  readonly paidAmount: bigint;
 }
 
 /**
  * Encode what a payer hands the merchant to ask for a refund. It names the
  * payment privately; the merchant still needs the owner secret to act on it.
  *
- * @param payment - The payment's secrets.
- * @param refundEncryptionKey - The encryption public key of the refund key's wallet.
+ * @param payment - The payment's secrets, including the key a refund is encrypted to.
  * @param paidAmount - What the payer paid, in the asset they paid.
  * @returns The refund code.
  */
-export const encodeRefundCode = (
-  payment: PaymentSecrets,
-  refundEncryptionKey: Uint8Array,
-  paidAmount: bigint,
-): string => {
+export const encodeRefundCode = (payment: PaymentSecrets, paidAmount: bigint): string => {
   checkBytes32(payment.payerKey, "payerKey");
   checkBytes32(payment.refundTo, "refundTo");
+  checkBytes32(payment.refundEnc, "refundEnc");
   checkUint(payment.index, UINT32_MAX, "index");
-  checkBytes32(refundEncryptionKey, "refundEncryptionKey");
   checkUint(paidAmount, UINT64_MAX, "paidAmount");
   const payload: RefundCodePayload = {
-    v: 3,
+    v: 4,
     k: toHex(payment.payerKey),
     r: toHex(payment.refundTo),
+    x: toHex(payment.refundEnc),
     i: payment.index.toString(10),
-    x: toHex(refundEncryptionKey),
     a: paidAmount.toString(10),
   };
   return encodeLinkPayload(payload);
 };
 
 /**
- * Decode a refund code produced by {@link encodeRefundCode}, or an earlier
- * version 1 code (no refund encryption key) or version 2 code (no paid amount).
+ * Decode a refund code produced by {@link encodeRefundCode}. Codes from before the receipt
+ * bound the encryption key name a payment this contract does not hold, so they are refused.
  *
  * @param code - The refund code.
- * @returns The payment's secrets, or `undefined` when malformed.
+ * @returns The payment's secrets and what was paid, or `undefined` when malformed.
  */
 export const decodeRefundCode = (code: string): DecodedRefundCode | undefined => {
   const raw = decodeLinkPayload(code) as Partial<RefundCodePayload> | undefined;
-  if ((raw?.v !== 1 && raw?.v !== 2 && raw?.v !== 3) || !/^\d+$/.test(raw.i ?? ""))
-    return undefined;
+  if (raw?.v !== 4 || !/^\d+$/.test(raw.i ?? "") || !/^\d+$/.test(raw.a ?? "")) return undefined;
   try {
     const index = BigInt(raw.i ?? "");
     checkUint(index, UINT32_MAX, "index");
-    const payment = { payerKey: fromHex(raw.k ?? ""), refundTo: fromHex(raw.r ?? ""), index };
-    if (raw.v === 1) return payment;
-    const refundEncryptionKey = fromHex(raw.x ?? "");
-    checkBytes32(refundEncryptionKey, "refundEncryptionKey");
-    if (raw.v === 2) return { ...payment, refundEncryptionKey };
-    if (!/^\d+$/.test(raw.a ?? "")) return undefined;
     const paidAmount = BigInt(raw.a ?? "");
     checkUint(paidAmount, UINT64_MAX, "paidAmount");
-    return { ...payment, refundEncryptionKey, paidAmount };
+    const payment = {
+      payerKey: fromHex(raw.k ?? ""),
+      refundTo: fromHex(raw.r ?? ""),
+      refundEnc: fromHex(raw.x ?? ""),
+      index,
+    };
+    checkBytes32(payment.payerKey, "payerKey");
+    checkBytes32(payment.refundTo, "refundTo");
+    checkBytes32(payment.refundEnc, "refundEnc");
+    return { ...payment, paidAmount };
   } catch {
     return undefined;
   }

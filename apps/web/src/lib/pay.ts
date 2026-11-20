@@ -430,6 +430,8 @@ export interface PaidInvoice {
   readonly receipt: string;
   readonly payerKey: string;
   readonly refundTo: string;
+  /** The encryption key a refund of this payment is encrypted to, bound into the receipt. */
+  readonly refundEnc: string;
   readonly index: bigint;
   readonly txId: string;
   /** KUSD handed over: the invoice amount, or its converted price for a NIGHT invoice. */
@@ -443,7 +445,11 @@ export interface PaidInvoice {
  * @returns The receipt and the payer's per-payment secrets.
  */
 export async function payInvoice(p: PaymentRequest): Promise<PaidInvoice> {
-  const payment = newPaymentSecrets(fromHex(p.account.coinPublicKey), p.index ?? 0n);
+  const payment = newPaymentSecrets(
+    fromHex(p.account.coinPublicKey),
+    fromHex(p.account.encryptionPublicKey),
+    p.index ?? 0n,
+  );
   const state = {
     ...emptyPayPrivateState(),
     merchantKey: p.terms.merchantKey,
@@ -454,6 +460,7 @@ export async function payInvoice(p: PaymentRequest): Promise<PaidInvoice> {
     invoiceOwner: p.terms.owner,
     payerKey: payment.payerKey,
     payerRefund: { bytes: payment.refundTo },
+    payerRefundEnc: payment.refundEnc,
     paymentIndex: payment.index,
   };
   // An invoice priced in NIGHT is paid in KUSD at the oracle's signed rate: no shielded NIGHT
@@ -509,6 +516,7 @@ export async function payInvoice(p: PaymentRequest): Promise<PaidInvoice> {
     receipt: toHex(result),
     payerKey: toHex(payment.payerKey),
     refundTo: toHex(payment.refundTo),
+    refundEnc: toHex(payment.refundEnc),
     index: payment.index,
     txId,
     paid: coin.value,
@@ -572,8 +580,6 @@ export async function closeInvoice(p: OwnerAction): Promise<CallResult> {
 /** What refunding one payment needs, on top of the owner's secret. */
 export interface RefundRequest extends OwnerAction {
   readonly payment: PaymentSecrets;
-  /** The payer's encryption public key, from the refund code. */
-  readonly refundEncryptionKey: Uint8Array;
   readonly kusdColor: Uint8Array;
 }
 
@@ -588,6 +594,7 @@ export async function refundPayment(p: RefundRequest): Promise<CallResult<Uint8A
     ...ownerState(p.terms, p.ownerSecret),
     payerKey: p.payment.payerKey,
     payerRefund: { bytes: p.payment.refundTo },
+    payerRefundEnc: p.payment.refundEnc,
     paymentIndex: p.payment.index,
   };
   const coin = {
@@ -603,7 +610,7 @@ export async function refundPayment(p: RefundRequest): Promise<CallResult<Uint8A
     "refund_payment",
     [p.terms.kind, p.terms.token, coin],
     p.onStage,
-    new Map([[toHex(p.payment.refundTo), toHex(p.refundEncryptionKey)]]),
+    new Map([[toHex(p.payment.refundTo), toHex(p.payment.refundEnc)]]),
   );
 }
 
@@ -627,6 +634,7 @@ export async function refundConvertedPayment(
     ...ownerState(p.terms, p.ownerSecret),
     payerKey: p.payment.payerKey,
     payerRefund: { bytes: p.payment.refundTo },
+    payerRefundEnc: p.payment.refundEnc,
     paymentIndex: p.payment.index,
     convertedAmount: p.paidAmount,
   };
@@ -643,7 +651,7 @@ export async function refundConvertedPayment(
     "refund_converted",
     [p.terms.kind, p.terms.token, KinkoPay.TokenKind.KUSD, coin],
     p.onStage,
-    new Map([[toHex(p.payment.refundTo), toHex(p.refundEncryptionKey)]]),
+    new Map([[toHex(p.payment.refundTo), toHex(p.payment.refundEnc)]]),
   );
 }
 
@@ -684,6 +692,7 @@ export const termsOfRecord = (r: StoredTerms): InvoiceTerms => ({
  * @param kind - The invoice kind.
  * @param payerKeyHex - The payer's per-payment key.
  * @param refundToHex - The payer's refund key.
+ * @param refundEncHex - The encryption key a refund is encrypted to.
  * @param index - The payment index.
  * @returns The receipt digest.
  */
@@ -692,12 +701,14 @@ export function receiptFrom(
   kind: InvoiceKindName,
   payerKeyHex: string,
   refundToHex: string,
+  refundEncHex: string,
   index: bigint,
 ): string {
   return toHex(
     receiptOf(fromHex(commitmentHex), KIND_OF[kind], {
       payerKey: fromHex(payerKeyHex),
       refundTo: fromHex(refundToHex),
+      refundEnc: fromHex(refundEncHex),
       index,
     }),
   );

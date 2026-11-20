@@ -110,8 +110,11 @@ describe("receipts", () => {
     const c = invoiceCommitmentOf(t);
     const payerKey = new Uint8Array(32).fill(9);
     const refundTo = new Uint8Array(32).fill(8);
-    const expected = toHex(receiptOf(c, t.kind, { payerKey, refundTo, index: 3n }));
-    expect(receiptFrom(toHex(c), "multipay", toHex(payerKey), toHex(refundTo), 3n)).toBe(expected);
+    const refundEnc = new Uint8Array(32).fill(7);
+    const expected = toHex(receiptOf(c, t.kind, { payerKey, refundTo, refundEnc, index: 3n }));
+    expect(
+      receiptFrom(toHex(c), "multipay", toHex(payerKey), toHex(refundTo), toHex(refundEnc), 3n),
+    ).toBe(expected);
   });
 
   it("travel as a proof that round-trips and checks to the same receipt", () => {
@@ -121,6 +124,7 @@ describe("receipts", () => {
       terms: t,
       payerKey: "09".repeat(32),
       refundTo: "08".repeat(32),
+      refundEnc: "07".repeat(32),
       index: 0n,
       title: "Logo",
     };
@@ -137,6 +141,7 @@ describe("receipts", () => {
       terms: terms(),
       payerKey: "09".repeat(32),
       refundTo: "zz".repeat(32),
+      refundEnc: "07".repeat(32),
       index: 0n,
     });
     expect(decodeReceiptProof(enc)).toBeNull();
@@ -149,6 +154,7 @@ describe("receipts", () => {
       terms: t,
       payerKey: "09".repeat(32),
       refundTo: "08".repeat(32),
+      refundEnc: "07".repeat(32),
       index: 0n,
     });
     const b = claimedBy({
@@ -156,6 +162,7 @@ describe("receipts", () => {
       terms: { ...t, amount: t.amount + 1n },
       payerKey: "09".repeat(32),
       refundTo: "08".repeat(32),
+      refundEnc: "07".repeat(32),
       index: 0n,
     });
     expect(a.receipt).not.toBe(b.receipt);

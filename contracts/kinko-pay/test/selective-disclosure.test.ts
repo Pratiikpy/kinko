@@ -21,6 +21,7 @@ import {
   OWNER,
   type PayHarness,
   PAYOUT,
+  REFUND_ENC,
   SALT,
   TokenKind,
 } from "./pay-fixtures.ts";
@@ -64,6 +65,7 @@ const truth = (
   attestedPayouts: [PAYOUT, PAYOUT, PAYOUT, PAYOUT],
   attestedPayers: PAYERS,
   attestedRefunds: REFUNDS,
+  attestedEncs: [REFUND_ENC, REFUND_ENC, REFUND_ENC, REFUND_ENC],
   attestedIndices: [0n, 0n, 0n, 0n],
   attestedPaths: receipts.map((r) => pathFor(h, r)),
   ...over,

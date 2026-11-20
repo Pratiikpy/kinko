@@ -55,16 +55,13 @@ function Refund({ commitment }: { commitment: string }) {
   const refund = () =>
     call.run(async (onStage) => {
       if (!account || !payment || !CONTRACTS.pay) throw new Error("Paste a valid refund code.");
-      if (!payment.refundEncryptionKey)
-        throw new Error(
-          "This refund code is from an older version of Kinko. Ask the payer for a new one from their receipt.",
-        );
       const ledger = await readPayLedger(await readerFor(account), CONTRACTS.pay);
       const receipt = receiptFrom(
         commitment,
         invoice.kind,
         toHex(payment.payerKey),
         toHex(payment.refundTo),
+        toHex(payment.refundEnc),
         payment.index,
       );
       if (!receiptExists(ledger, receipt))
@@ -78,16 +75,11 @@ function Refund({ commitment }: { commitment: string }) {
         terms: termsOfRecord(invoice),
         ownerSecret: fromHex(invoice.ownerSecret),
         payment,
-        refundEncryptionKey: payment.refundEncryptionKey,
         kusdColor: kusdColorOf(ledger),
         onStage,
       };
       // A NIGHT invoice is paid in KUSD at a quoted rate, so what comes back is what was paid.
       if (invoice.token === "NATIVE") {
-        if (payment.paidAmount === undefined)
-          throw new Error(
-            "This refund code does not say what was paid. Ask the payer for a new one from their receipt.",
-          );
         await refundConvertedPayment({ ...request, paidAmount: payment.paidAmount });
         return;
       }
@@ -113,7 +105,11 @@ function Refund({ commitment }: { commitment: string }) {
           }}
           spellCheck={false}
           autoComplete="off"
-          error={code.trim() && !payment ? "That is not a refund code." : null}
+          error={
+            code.trim() && !payment
+              ? "That is not a refund code this version of Kinko can read. A payer can copy a current one from their receipt."
+              : null
+          }
         />
         <Button
           variant="secondary"

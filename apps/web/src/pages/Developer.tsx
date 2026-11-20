@@ -96,7 +96,7 @@ const link = \`\${appOrigin}/pay#\${encodePaymentLink(terms, payContractAddress,
 import { ContractState } from "@midnight-ntwrk/compact-runtime";
 
 const commitment = invoiceCommitmentOf(terms);
-const receipt = receiptOf(commitment, terms.kind, { payerKey, refundTo, index });
+const receipt = receiptOf(commitment, terms.kind, { payerKey, refundTo, refundEnc, index });
 const read = await publicData.queryContractState(payAddress);
 const ledger = KinkoPay.ledger(read.contractState.deserialize({ v9: ContractState }).data);
 const paid = ledger.receipts.member(receipt);`}</Code>

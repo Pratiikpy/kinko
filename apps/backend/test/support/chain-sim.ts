@@ -169,6 +169,7 @@ export class ChainSim {
       ...this.#merchantState(invoice),
       payerKey: fill(payerSeed),
       payerRefund: { bytes: fill(payerSeed + 1) },
+      payerRefundEnc: fill(payerSeed + 2),
       paymentIndex: BigInt(nonce),
     };
     const color = invoice.terms.token === KinkoPay.TokenKind.KUSD ? KUSD_COLOR : NATIVE_COLOR;
@@ -198,6 +199,7 @@ export class ChainSim {
       ...this.#merchantState(invoice),
       payerKey: fill(0x33),
       payerRefund: { bytes: fill(0x34) },
+      payerRefundEnc: fill(0x35),
       paymentIndex: BigInt(nonce),
       convertedAmount: paid.value,
     };

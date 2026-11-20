@@ -31,6 +31,8 @@ export interface PayPrivateState {
   readonly payerKey: Uint8Array;
   /** Where a refund of this payment goes. Bound into the receipt. */
   readonly payerRefund: CoinPublicKey;
+  /** The encryption key a refund is encrypted to. Bound into the receipt with the refund key. */
+  readonly payerRefundEnc: Uint8Array;
   /** Distinguishes deliberate repeat contributions from replays. Pinned to 0 for STANDARD. */
   readonly paymentIndex: bigint;
   /** Per-invoice ownership secret. Authorises close, cancel and refund; never in a payment link. */
@@ -46,6 +48,7 @@ export interface PayPrivateState {
   readonly attestedPayouts: readonly Uint8Array[];
   readonly attestedPayers: readonly Uint8Array[];
   readonly attestedRefunds: readonly Uint8Array[];
+  readonly attestedEncs: readonly Uint8Array[];
   readonly attestedIndices: readonly bigint[];
   readonly attestedPaths: readonly MerkleTreePath<Uint8Array>[];
   /** Four invoices paid under one proof. */
@@ -73,6 +76,7 @@ export const emptyPayPrivateState = (): PayPrivateState => ({
   amount: 0n,
   payerKey: ZERO32,
   payerRefund: { bytes: ZERO32 },
+  payerRefundEnc: ZERO32,
   paymentIndex: 0n,
   ownerSecret: ZERO32,
   convertedAmount: 0n,
@@ -83,6 +87,7 @@ export const emptyPayPrivateState = (): PayPrivateState => ({
   attestedPayouts: [],
   attestedPayers: [],
   attestedRefunds: [],
+  attestedEncs: [],
   attestedIndices: [],
   attestedPaths: [],
   batchAmounts: [],
@@ -145,6 +150,7 @@ export const payWitnesses: Witnesses<PayPrivateState> = {
   invoice_amount: read("amount"),
   payer_key: read("payerKey"),
   payer_refund: read("payerRefund"),
+  payer_refund_enc: read("payerRefundEnc"),
   payment_index: read("paymentIndex"),
   owner_secret: read("ownerSecret"),
   converted_amount: read("convertedAmount"),
@@ -155,6 +161,7 @@ export const payWitnesses: Witnesses<PayPrivateState> = {
   attested_payouts: readVector("attestedPayouts"),
   attested_payers: readVector("attestedPayers"),
   attested_refunds: readVector("attestedRefunds"),
+  attested_encs: readVector("attestedEncs"),
   attested_indices: readVector("attestedIndices"),
   attested_paths: readVector("attestedPaths"),
   batch_amounts: readVector("batchAmounts"),

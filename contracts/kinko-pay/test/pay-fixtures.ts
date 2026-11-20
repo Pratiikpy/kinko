@@ -31,6 +31,7 @@ export const PAYOUT = bytes32(0x12);
 export const SALT = bytes32(0xaa);
 export const PAYER = bytes32(0x33);
 export const REFUND_TO = bytes32(0x34);
+export const REFUND_ENC = bytes32(0x35);
 export const OWNER = bytes32(0xee);
 export const AMOUNT = 42_500n;
 export const NO_EXPIRY = 0n;
@@ -46,6 +47,7 @@ export const base = (over: Partial<PayPrivateState> = {}): PayPrivateState => {
     amount: AMOUNT,
     payerKey: PAYER,
     payerRefund: { bytes: REFUND_TO },
+    payerRefundEnc: REFUND_ENC,
     ownerSecret,
     // What the payer's link carries: the public tag of the owner secret behind the invoice.
     invoiceOwner: ownerTagOf(ownerSecret),

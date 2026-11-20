@@ -84,6 +84,7 @@ export interface PaymentRecord {
   readonly receipt?: string;
   readonly payerKey?: string;
   readonly refundTo?: string;
+  readonly refundEnc?: string;
   readonly index?: string;
   readonly memo?: string;
 }

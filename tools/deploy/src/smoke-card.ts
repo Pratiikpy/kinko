@@ -239,7 +239,10 @@ try {
     api,
     theCard.addresses.encryptionPublicKey,
   );
-  const payment = newPaymentSecrets(bytes(theCard.addresses.coinPublicKey));
+  const payment = newPaymentSecrets(
+    bytes(theCard.addresses.coinPublicKey),
+    bytes(theCard.addresses.encryptionPublicKey),
+  );
   const pc = await findDeployedContract(
     cardProviders as never,
     {
@@ -250,6 +253,7 @@ try {
         ...base,
         payerKey: payment.payerKey,
         payerRefund: { bytes: payment.refundTo },
+        payerRefundEnc: payment.refundEnc,
         paymentIndex: payment.index,
       },
     } as never,

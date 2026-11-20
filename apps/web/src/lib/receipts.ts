@@ -23,12 +23,13 @@ export interface ReceiptProof {
   readonly terms: InvoiceTerms;
   readonly payerKey: string;
   readonly refundTo: string;
+  readonly refundEnc: string;
   readonly index: bigint;
   readonly title?: string;
 }
 
 interface Wire {
-  v: 2;
+  v: 3;
   c: string;
   m: string;
   p: string;
@@ -41,6 +42,8 @@ interface Wire {
   e: string;
   pk: string;
   r: string;
+  /** The encryption key a refund is encrypted to, bound into the receipt. */
+  re: string;
   i: string;
   ti?: string;
 }
@@ -59,7 +62,7 @@ const isDigits = (v: unknown): v is string => typeof v === "string" && DIGITS.te
  */
 export function encodeReceiptProof(p: ReceiptProof): string {
   const w: Wire = {
-    v: 2,
+    v: 3,
     c: p.contract,
     m: toHex(p.terms.merchantKey),
     p: toHex(p.terms.payout),
@@ -71,6 +74,7 @@ export function encodeReceiptProof(p: ReceiptProof): string {
     e: p.terms.expiresAt.toString(),
     pk: p.payerKey,
     r: p.refundTo,
+    re: p.refundEnc,
     i: p.index.toString(),
     ti: p.title,
   };
@@ -87,9 +91,10 @@ export function decodeReceiptProof(text: string): ReceiptProof | null {
   const w = decodeLinkPayload(
     text.includes("#") ? text.slice(text.indexOf("#") + 1) : text.trim(),
   ) as Partial<Wire> | undefined;
-  // Version 1 proofs carry no owner tag, so they name commitments the contract no longer knows.
-  if (w?.v !== 2) return null;
-  const { c, m, p, s, o, pk, r, n, e, i, k, t, ti } = w;
+  // Earlier proofs carry no owner tag or no refund encryption key, so they name receipts the
+  // contract no longer knows.
+  if (w?.v !== 3) return null;
+  const { c, m, p, s, o, pk, r, re, n, e, i, k, t, ti } = w;
   if (
     !isHex32(c) ||
     !isHex32(m) ||
@@ -97,7 +102,8 @@ export function decodeReceiptProof(text: string): ReceiptProof | null {
     !isHex32(s) ||
     !isHex32(o) ||
     !isHex32(pk) ||
-    !isHex32(r)
+    !isHex32(r) ||
+    !isHex32(re)
   )
     return null;
   if (!isDigits(n) || !isDigits(e) || !isDigits(i)) return null;
@@ -116,6 +122,7 @@ export function decodeReceiptProof(text: string): ReceiptProof | null {
     },
     payerKey: pk,
     refundTo: r,
+    refundEnc: re,
     index: BigInt(i),
     title: typeof ti === "string" ? ti.slice(0, 80) : undefined,
   };
@@ -131,6 +138,13 @@ export function claimedBy(p: ReceiptProof): { commitment: string; receipt: strin
   const commitment = toHex(invoiceCommitmentOf(p.terms));
   return {
     commitment,
-    receipt: receiptFrom(commitment, KIND_NAME(p.terms.kind), p.payerKey, p.refundTo, p.index),
+    receipt: receiptFrom(
+      commitment,
+      KIND_NAME(p.terms.kind),
+      p.payerKey,
+      p.refundTo,
+      p.refundEnc,
+      p.index,
+    ),
   };
 }
