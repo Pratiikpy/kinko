@@ -2,7 +2,8 @@
 // prices it at 40 NIGHT, the app publishes it, and the customer pays the KUSD
 // the oracle quotes, the rate proven inside the payment. NIGHT exists only
 // unshielded on Midnight, so this is the only way such an invoice can be paid.
-// The truth is the merchant's KUSD balance, which rises by the quoted price.
+// The truth is the merchant's KUSD balance, which rises by the quoted price, then returns to
+// where it began when the payer's refund code is used.
 
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,6 +15,7 @@ import type { WalletRegistry } from "@sig-net/midnight-contract-deploy";
 import {
   closeParties,
   connect,
+  consoleSettled,
   DEPLOYMENT,
   expectNoProblems,
   finished,
@@ -98,6 +100,45 @@ test("a 40 NIGHT invoice is paid in KUSD at the oracle's signed rate", async ({ 
   const drift = Number(gained - price) / Number(price);
   expect(Math.abs(drift), `paid ${String(gained)} against a shown ${String(price)}`).toBeLessThan(
     0.02,
+  );
+
+  // The payer asks for the money back with the refund code from their receipt. The merchant never
+  // held NIGHT, so what returns is the KUSD that was paid, to the payer's refund key, once.
+  const codeLabel = await customer.page
+    .getByRole("button", { name: /^Copy Refund code:/ })
+    .getAttribute("aria-label");
+  const refundCode = codeLabel?.replace(/^Copy Refund code:\s*/, "") ?? "";
+  expect(refundCode.length).toBeGreaterThan(20);
+
+  // The merchant is still on the invoices page it published from, signed in and up to date.
+  await shot(merchant, "night-invoices");
+  await merchant.page.getByRole("link", { name: /NIGHT/ }).first().click({ timeout: 60_000 });
+  await merchant.page.getByLabel("Refund code").fill(refundCode);
+  await merchant.page.getByRole("button", { name: /^Refund \$[0-9.]+$/ }).click();
+  await expect(merchant.page.getByText("Refunded to the payer's key.")).toBeVisible({
+    timeout: 15 * 60_000,
+  });
+  await shot(merchant, "night-refunded");
+
+  await expect
+    .poll(() => merchant.wallet.balance(kusd), { timeout: 5 * 60_000 })
+    .toBe(merchantBefore);
+  await expect
+    .poll(() => customer.wallet.balance(kusd), { timeout: 5 * 60_000 })
+    .toBe(customerBefore);
+
+  // A second refund of the same payment is refused before anything is signed.
+  await merchant.page.getByRole("button", { name: /^Refund \$[0-9.]+$/ }).click();
+  await expect(merchant.page.getByText("That payment has already been refunded.")).toBeVisible({
+    timeout: 2 * 60_000,
+  });
+  const expected = (p: string) => p.includes("That payment has already been refunded.");
+  await consoleSettled();
+  expect(merchant.problems.filter(expected)).toHaveLength(1);
+  merchant.problems.splice(
+    0,
+    merchant.problems.length,
+    ...merchant.problems.filter((p) => !expected(p)),
   );
 
   await expectNoProblems(merchant, customer);

@@ -148,11 +148,28 @@ describe("refund codes", () => {
   it("round-trip the payment's secrets", () => {
     const payment = { payerKey: PAYER, refundTo: REFUND_TO, index: 3n };
     const refundEnc = new Uint8Array(32).fill(0x7e);
-    const decoded = decodeRefundCode(encodeRefundCode(payment, refundEnc));
+    const decoded = decodeRefundCode(encodeRefundCode(payment, refundEnc, 91_300n));
     expect(decoded && hex(decoded.payerKey)).toBe(hex(PAYER));
     expect(decoded && hex(decoded.refundTo)).toBe(hex(REFUND_TO));
     expect(decoded?.index).toBe(3n);
     expect(decoded?.refundEncryptionKey && hex(decoded.refundEncryptionKey)).toBe(hex(refundEnc));
+    expect(decoded?.paidAmount).toBe(91_300n);
+  });
+
+  it("still read a version 2 code, which has no paid amount", () => {
+    const v2 = Buffer.from(
+      JSON.stringify({
+        v: 2,
+        k: hex(PAYER),
+        r: hex(REFUND_TO),
+        i: "3",
+        x: hex(new Uint8Array(32).fill(0x7e)),
+      }),
+    ).toString("base64url");
+    const decoded = decodeRefundCode(v2);
+    expect(decoded?.index).toBe(3n);
+    expect(decoded?.refundEncryptionKey).toBeDefined();
+    expect(decoded?.paidAmount).toBeUndefined();
   });
 
   it("still read a version 1 code, which has no refund encryption key", () => {
@@ -168,12 +185,28 @@ describe("refund codes", () => {
     const badKey = Buffer.from(
       JSON.stringify({ v: 2, k: hex(PAYER), r: hex(REFUND_TO), i: "1", x: "ab" }),
     ).toString("base64url");
+    const v3 = (extra: Record<string, unknown>) =>
+      Buffer.from(
+        JSON.stringify({
+          v: 3,
+          k: hex(PAYER),
+          r: hex(REFUND_TO),
+          i: "1",
+          x: hex(new Uint8Array(32).fill(0x7e)),
+          ...extra,
+        }),
+      ).toString("base64url");
     for (const junk of [
       "",
       "!!",
       "eyJ2IjozfQ",
       "eyJ2IjoxLCJrIjoiYWIiLCJyIjoiYWIiLCJpIjoiMSJ9",
       badKey,
+      // A version 3 code without a usable paid amount names a payment but not what it was worth.
+      v3({}),
+      v3({ a: "-5" }),
+      v3({ a: "1.5" }),
+      v3({ a: (1n << 64n).toString() }),
     ]) {
       expect(decodeRefundCode(junk)).toBeUndefined();
     }
@@ -181,6 +214,14 @@ describe("refund codes", () => {
       encodeRefundCode(
         { payerKey: PAYER, refundTo: REFUND_TO, index: 1n << 32n },
         new Uint8Array(32),
+        1n,
+      ),
+    ).toThrow(/out of range/);
+    expect(() =>
+      encodeRefundCode(
+        { payerKey: PAYER, refundTo: REFUND_TO, index: 1n },
+        new Uint8Array(32),
+        1n << 64n,
       ),
     ).toThrow(/out of range/);
   });

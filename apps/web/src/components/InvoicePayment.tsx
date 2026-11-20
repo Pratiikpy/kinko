@@ -119,6 +119,7 @@ export function InvoicePayment({
           index: out.index,
         },
         fromHex(account.encryptionPublicKey),
+        out.paid ?? terms.amount,
       );
       await update((doc) =>
         upsert(doc, "payments", {

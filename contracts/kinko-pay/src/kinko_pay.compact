@@ -41,6 +41,7 @@ circuit domain_owner():    Bytes<32> { return pad(32, "kinko:owner:v1"); }
 circuit domain_refund():   Bytes<32> { return pad(32, "kinko:refund:v1"); }
 circuit domain_attest():   Bytes<32> { return pad(32, "kinko:attest:v1"); }
 circuit domain_quote():    Bytes<32> { return pad(32, "kinko:quote:v1"); }
+circuit domain_converted(): Bytes<32> { return pad(32, "kinko:converted:v1"); }
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -122,6 +123,14 @@ export ledger receipt_tree: HistoricMerkleTree<24, Bytes<32>>;
 // Tags of refunded receipts. A tag is a domain-separated hash of a receipt
 // that is already public, so it says only that one public receipt was refunded.
 export ledger refunded: Set<Bytes<32>>;
+
+// What a payment made through conversion was worth, in the asset it was paid in.
+// A receipt alone does not say how its payment was made, and a refund must
+// return exactly what was paid, so settlement records a digest of the receipt,
+// the payer's secret key, the amount and the asset. The payer's key is in the
+// hash, so the amount stays private: only someone who holds the key, which is
+// the payer and whoever they give their refund code, can name it.
+export ledger converted_payments: Set<Bytes<32>>;
 
 // Published attestations. Each is a digest of a statement a merchant proved
 // about their own revenue. The statement is verifiable; the revenue is not.
@@ -315,6 +324,22 @@ export pure circuit receipt_digest(
     payer,
     refund_to,
     persistentHash<Uint<32>>(index)
+  ]);
+}
+
+// The record settlement keeps of a payment made through conversion: what was
+// paid and in which asset, bound to its receipt and, secretly, to the payer.
+export pure circuit converted_digest(
+  receipt: Bytes<32>,
+  payer: Bytes<32>,
+  converted: Uint<64>,
+  paid_token: TokenKind
+): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([
+    domain_converted(),
+    receipt,
+    payer,
+    persistentHash<Vector<2, Uint<64>>>([converted, (paid_token as Uint<8>) as Uint<64>])
   ]);
 }
 
@@ -669,7 +694,8 @@ export circuit settle_invoice_converted(
   const payout = merchant_payout();
   const commitment = disclose(link_commitment(kind, invoice_token, amount, payout));
   const index = disclose(pinned_index(kind, payment_index()));
-  const receipt = record_settlement(commitment, kind, payer_key(), payer_refund().bytes, index);
+  const payer = payer_key();
+  const receipt = record_settlement(commitment, kind, payer, payer_refund().bytes, index);
 
   // A stale quote is refused, or a payer could hold a favourable quote
   // indefinitely. Disclosed deliberately: a quote's expiry says nothing about
@@ -689,6 +715,9 @@ export circuit settle_invoice_converted(
   // The coin must be the converted amount, in the asset the quote priced.
   assert(coin.value == converted as Uint<128>, "coin value does not match quote");
   assert(coin.color == expected_color(disclose(paid_token)), "coin is not the asset the quote priced");
+
+  // Keep what was paid, so a refund can return exactly that and only for a payment made this way.
+  converted_payments.insert(disclose(converted_digest(receipt, payer, converted, paid_token)));
 
   forward(coin, payout);
   return receipt;
@@ -735,6 +764,64 @@ export circuit refund_payment(
   refunded.insert(tag);
 
   check_coin(coin, amount, token);
+  forward(coin, refund_to);
+  return tag;
+}
+
+// Refund a payment that was made through conversion, in the asset the payer
+// actually paid.
+//
+// An invoice priced in one asset and settled in the other (a NIGHT invoice paid
+// in KUSD) has no refund in its own asset: the merchant was paid KUSD, and
+// refund_payment would ask for the invoice's amount in the invoice's asset. This
+// returns what was paid instead. The payment is named the same way (the payer's
+// key, refund key and index), so the receipt is the one settlement recorded,
+// and the refunded set is shared with refund_payment: a payment is refunded once,
+// through whichever circuit.
+//
+// Settlement recorded what was paid and in which asset, bound to the payer's
+// key, so the circuit checks the amount and the asset against that record. It
+// refuses a payment that was not made through conversion, which refund_payment
+// returns in full, and an amount the payer did not pay, whether stated high
+// to take more or low to settle for less.
+export circuit refund_converted(
+  kind: InvoiceKind,
+  invoice_token: TokenKind,
+  paid_token: TokenKind,
+  coin: ShieldedCoinInfo
+): Bytes<32> {
+  // Same-asset payments are refunded by refund_payment, in the invoice's amount.
+  assert(disclose(invoice_token) != disclose(paid_token), "a converted refund needs two different assets");
+
+  const commitment = disclose(
+    commitment_for_owner(
+      kind,
+      invoice_token,
+      owner_tag(owner_secret()),
+      invoice_amount(),
+      merchant_payout()
+    )
+  );
+  assert(invoices.member(commitment), "unknown invoice");
+
+  const index = disclose(pinned_index(kind, payment_index()));
+  const payer = payer_key();
+  const refund_to = payer_refund();
+  const receipt = disclose(receipt_digest(commitment, payer, refund_to.bytes, index));
+  assert(receipts.member(receipt), "no such payment");
+
+  const paid = converted_amount();
+  assert(
+    converted_payments.member(disclose(converted_digest(receipt, payer, paid, paid_token))),
+    "no such payment was made through conversion in that amount and asset"
+  );
+
+  const tag = disclose(refund_tag(receipt));
+  assert(!refunded.member(tag), "payment already refunded");
+  refunded.insert(tag);
+
+  assert(coin.value == paid as Uint<128>, "coin value does not match the amount paid");
+  assert(coin.color == expected_color(disclose(paid_token)), "coin is not the asset that was paid");
   forward(coin, refund_to);
   return tag;
 }

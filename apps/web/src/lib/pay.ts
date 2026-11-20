@@ -607,6 +607,46 @@ export async function refundPayment(p: RefundRequest): Promise<CallResult<Uint8A
   );
 }
 
+/** What refunding a converted payment needs, on top of the owner's secret. */
+export interface ConvertedRefundRequest extends RefundRequest {
+  /** What the payer paid, from the refund code, in the asset they paid. */
+  readonly paidAmount: bigint;
+}
+
+/**
+ * Refund a payment an invoice priced in NIGHT received in KUSD, in the KUSD that was paid. The
+ * invoice's own asset was never held, so the plain refund cannot return it.
+ *
+ * @param p - The owner action, the payment's secrets and what was paid.
+ * @returns The confirmed call, whose result is the refund tag.
+ */
+export async function refundConvertedPayment(
+  p: ConvertedRefundRequest,
+): Promise<CallResult<Uint8Array>> {
+  const state = {
+    ...ownerState(p.terms, p.ownerSecret),
+    payerKey: p.payment.payerKey,
+    payerRefund: { bytes: p.payment.refundTo },
+    paymentIndex: p.payment.index,
+    convertedAmount: p.paidAmount,
+  };
+  const coin = {
+    nonce: crypto.getRandomValues(new Uint8Array(32)),
+    color: p.kusdColor,
+    value: p.paidAmount,
+  };
+  return callCircuit<Uint8Array>(
+    p.account,
+    "pay",
+    p.payAddress,
+    state,
+    "refund_converted",
+    [p.terms.kind, p.terms.token, KinkoPay.TokenKind.KUSD, coin],
+    p.onStage,
+    new Map([[toHex(p.payment.refundTo), toHex(p.refundEncryptionKey)]]),
+  );
+}
+
 /** The stored fields an invoice's terms are rebuilt from. */
 export interface StoredTerms {
   readonly merchantKey: string;

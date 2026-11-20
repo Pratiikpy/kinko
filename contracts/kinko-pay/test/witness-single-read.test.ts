@@ -137,6 +137,44 @@ describe("each witness is read exactly once per circuit", () => {
     }
   });
 
+  it("refund_converted, in both directions", async () => {
+    for (const [invoiceToken, paidToken] of [
+      [TokenKind.NATIVE, TokenKind.KUSD],
+      [TokenKind.KUSD, TokenKind.NATIVE],
+    ] as const) {
+      const oracle = generateOracleKeypair();
+      const converted = 91_300n;
+      const h = await deployPay(base({ convertedAmount: converted }), oracle.publicKey);
+      await h.call("create_invoice", InvoiceKind.MULTIPAY, invoiceToken, 0n);
+      const quote = {
+        baseAmount: AMOUNT,
+        convertedAmount: converted,
+        fromToken: invoiceToken,
+        toToken: paidToken,
+        expiresAt: T0 + 3_600n,
+      };
+      await h.call(
+        "settle_invoice_converted",
+        InvoiceKind.MULTIPAY,
+        invoiceToken,
+        paidToken,
+        coin(converted, colourOf(paidToken)),
+        quote.expiresAt,
+        signQuote(oracle, quote),
+      );
+      const result = await reads(() =>
+        h.call(
+          "refund_converted",
+          InvoiceKind.MULTIPAY,
+          invoiceToken,
+          paidToken,
+          coin(converted, colourOf(paidToken)),
+        ),
+      );
+      expect(result).toEqual({ ...FROM_OWNER, ...PAYER, converted_amount: 1 });
+    }
+  });
+
   it("attest_revenue_at_least, whose per-payment helper runs four times", async () => {
     const PAYERS = [bytes32(0x31), bytes32(0x32), bytes32(0x33), bytes32(0x34)];
     const REFUNDS = [bytes32(0x41), bytes32(0x42), bytes32(0x43), bytes32(0x44)];

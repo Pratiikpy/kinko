@@ -29,6 +29,7 @@ import {
   receiptExists,
   receiptFrom,
   receiptRefunded,
+  refundConvertedPayment,
   refundPayment,
   termsOfRecord,
 } from "../../lib/pay.ts";
@@ -44,6 +45,12 @@ function Refund({ commitment }: { commitment: string }) {
   const [check, setCheck] = useState<string | null>(null);
   const payment = code.trim() ? decodeRefundCode(code.trim()) : undefined;
   if (!invoice || !CONTRACTS.pay) return null;
+
+  // A NIGHT invoice is paid in KUSD at a quoted rate, so what is refunded is what the code says
+  // was paid, not the invoice's amount.
+  const refundedDollars = invoice.token === "NATIVE" ? payment?.paidAmount : BigInt(invoice.amount);
+  const refundLabel =
+    refundedDollars === undefined ? "Refund" : `Refund $${formatAmount(refundedDollars)}`;
 
   const refund = () =>
     call.run(async (onStage) => {
@@ -65,7 +72,7 @@ function Refund({ commitment }: { commitment: string }) {
       if (receiptRefunded(ledger, toHex(refundTagOf(fromHex(receipt)))))
         throw new Error("That payment has already been refunded.");
       setCheck(receipt);
-      await refundPayment({
+      const request = {
         account,
         payAddress: CONTRACTS.pay,
         terms: termsOfRecord(invoice),
@@ -74,7 +81,17 @@ function Refund({ commitment }: { commitment: string }) {
         refundEncryptionKey: payment.refundEncryptionKey,
         kusdColor: kusdColorOf(ledger),
         onStage,
-      });
+      };
+      // A NIGHT invoice is paid in KUSD at a quoted rate, so what comes back is what was paid.
+      if (invoice.token === "NATIVE") {
+        if (payment.paidAmount === undefined)
+          throw new Error(
+            "This refund code does not say what was paid. Ask the payer for a new one from their receipt.",
+          );
+        await refundConvertedPayment({ ...request, paidAmount: payment.paidAmount });
+        return;
+      }
+      await refundPayment(request);
     });
 
   return (
@@ -83,6 +100,9 @@ function Refund({ commitment }: { commitment: string }) {
       <p className="mb-4 text-sm text-ink-2">
         A payer who wants a refund sends you their refund code. It names their one payment; the
         refund goes back to the key bound into their receipt, so it cannot be redirected.
+        {invoice.token === "NATIVE"
+          ? " This invoice is priced in NIGHT and was paid in KUSD at the oracle's rate, so what comes back is the KUSD the payer paid, as their code states."
+          : ""}
       </p>
       <div className="grid gap-3 sm:max-w-lg">
         <TextField
@@ -101,7 +121,7 @@ function Refund({ commitment }: { commitment: string }) {
           busy={call.busy}
           disabled={!payment}
         >
-          Refund ${formatAmount(BigInt(invoice.amount))}
+          {refundLabel}
         </Button>
         {check ? (
           <p className="text-xs text-ink-3">
@@ -237,21 +257,7 @@ export default function InvoiceDetail() {
                   <ProofProgress stage={call.stage} startedAt={call.startedAt} error={call.error} />
                 </div>
               </Card>
-              {(invoice.contributions ?? 0) > 0 ? (
-                invoice.token === "NATIVE" ? (
-                  <Card>
-                    <SectionTitle>Refund a payment</SectionTitle>
-                    <p className="text-sm text-ink-2">
-                      This invoice is priced in NIGHT and was paid in KUSD at the oracle's rate. A
-                      refund is made in the invoice's own asset and amount, and a payer's KUSD
-                      cannot be returned that way, so Kinko does not offer one here. Settle it with
-                      the payer by paying them back directly.
-                    </p>
-                  </Card>
-                ) : (
-                  <Refund commitment={invoice.commitment} />
-                )
-              ) : null}
+              {(invoice.contributions ?? 0) > 0 ? <Refund commitment={invoice.commitment} /> : null}
             </div>
             <aside className="space-y-4">
               <Card>

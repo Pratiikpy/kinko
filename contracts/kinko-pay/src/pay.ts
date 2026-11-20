@@ -335,12 +335,14 @@ export const decodePaymentLink = (link: string): DecodedPaymentLink | undefined 
 };
 
 interface RefundCodePayload {
-  v: 1 | 2;
+  v: 1 | 2 | 3;
   k: string;
   r: string;
   i: string;
   /** The refund key's encryption public key (version 2). */
   x?: string;
+  /** What the payer paid, in the smallest unit of the asset they paid (version 3). */
+  a?: string;
 }
 
 /** A refund code read back: the payment's secrets and, from version 2, the refund encryption key. */
@@ -350,6 +352,11 @@ export interface DecodedRefundCode extends PaymentSecrets {
    * wallet needs it to encrypt the refunded coin to the payer.
    */
   readonly refundEncryptionKey?: Uint8Array;
+  /**
+   * What the payer paid, in the asset they paid (version 3). An invoice priced in one asset and
+   * paid in the other is refunded in this amount, which the merchant cannot work out alone.
+   */
+  readonly paidAmount?: bigint;
 }
 
 /**
@@ -358,36 +365,41 @@ export interface DecodedRefundCode extends PaymentSecrets {
  *
  * @param payment - The payment's secrets.
  * @param refundEncryptionKey - The encryption public key of the refund key's wallet.
+ * @param paidAmount - What the payer paid, in the asset they paid.
  * @returns The refund code.
  */
 export const encodeRefundCode = (
   payment: PaymentSecrets,
   refundEncryptionKey: Uint8Array,
+  paidAmount: bigint,
 ): string => {
   checkBytes32(payment.payerKey, "payerKey");
   checkBytes32(payment.refundTo, "refundTo");
   checkUint(payment.index, UINT32_MAX, "index");
   checkBytes32(refundEncryptionKey, "refundEncryptionKey");
+  checkUint(paidAmount, UINT64_MAX, "paidAmount");
   const payload: RefundCodePayload = {
-    v: 2,
+    v: 3,
     k: toHex(payment.payerKey),
     r: toHex(payment.refundTo),
     i: payment.index.toString(10),
     x: toHex(refundEncryptionKey),
+    a: paidAmount.toString(10),
   };
   return encodeLinkPayload(payload);
 };
 
 /**
  * Decode a refund code produced by {@link encodeRefundCode}, or an earlier
- * version 1 code, which carries no refund encryption key.
+ * version 1 code (no refund encryption key) or version 2 code (no paid amount).
  *
  * @param code - The refund code.
  * @returns The payment's secrets, or `undefined` when malformed.
  */
 export const decodeRefundCode = (code: string): DecodedRefundCode | undefined => {
   const raw = decodeLinkPayload(code) as Partial<RefundCodePayload> | undefined;
-  if ((raw?.v !== 1 && raw?.v !== 2) || !/^\d+$/.test(raw.i ?? "")) return undefined;
+  if ((raw?.v !== 1 && raw?.v !== 2 && raw?.v !== 3) || !/^\d+$/.test(raw.i ?? ""))
+    return undefined;
   try {
     const index = BigInt(raw.i ?? "");
     checkUint(index, UINT32_MAX, "index");
@@ -395,7 +407,11 @@ export const decodeRefundCode = (code: string): DecodedRefundCode | undefined =>
     if (raw.v === 1) return payment;
     const refundEncryptionKey = fromHex(raw.x ?? "");
     checkBytes32(refundEncryptionKey, "refundEncryptionKey");
-    return { ...payment, refundEncryptionKey };
+    if (raw.v === 2) return { ...payment, refundEncryptionKey };
+    if (!/^\d+$/.test(raw.a ?? "")) return undefined;
+    const paidAmount = BigInt(raw.a ?? "");
+    checkUint(paidAmount, UINT64_MAX, "paidAmount");
+    return { ...payment, refundEncryptionKey, paidAmount };
   } catch {
     return undefined;
   }

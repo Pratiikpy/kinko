@@ -65,6 +65,9 @@ export interface DesiredShieldedOutput {
 }
 
 /** A synced wallet answering connector calls. */
+/** How long a wallet may take to report a synced state before the test is told why it waits. */
+const SYNC_WAIT_MS = 10 * 60_000;
+
 export class DevWallet {
   private constructor(
     readonly label: string,
@@ -86,9 +89,23 @@ export class DevWallet {
     return new DevWallet(label, facade, keys, registry.config);
   }
 
-  /** @returns The latest synced state. */
-  state(): Promise<FacadeState> {
-    return this.facade.waitForSyncedState();
+  /**
+   * @returns The latest synced state.
+   * @throws {Error} When the wallet reports no synced state within ten minutes, so a test fails
+   * with the cause instead of waiting on a stalled indexer for its whole budget.
+   */
+  async state(): Promise<FacadeState> {
+    let timer: NodeJS.Timeout | undefined;
+    const stalled = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`the ${this.label} wallet reported no synced state in ten minutes`));
+      }, SYNC_WAIT_MS);
+    });
+    try {
+      return await Promise.race([this.facade.waitForSyncedState(), stalled]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** @returns The bech32m shielded address the app shows and other wallets pay. */
