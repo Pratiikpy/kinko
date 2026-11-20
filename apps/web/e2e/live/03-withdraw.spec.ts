@@ -19,6 +19,8 @@ import {
   shot,
 } from "./live.ts";
 
+const LOCAL = (ENV.NETWORK_ID ?? "undeployed") === "undeployed";
+
 // Whole dollars to withdraw; a test wallet short of $11 can name a smaller amount.
 const DOLLARS = process.env.KINKO_LIVE_WITHDRAW_USDC ?? "10";
 if (!/^[1-9]\d*$/.test(DOLLARS)) throw new Error("KINKO_LIVE_WITHDRAW_USDC must be whole dollars.");
@@ -70,7 +72,9 @@ test(`a user withdraws $${DOLLARS} of KUSD and receives $${DOLLARS} of USDC on E
       async () =>
         (await close.isVisible()) ||
         user.problems.some((p) => p.includes("[kinko] the action failed")),
-      { timeout: 25 * 60_000, intervals: [5_000] },
+      // A live MPC attests after Ethereum finality: the broadcast step alone took 20 minutes on
+      // Sepolia, 35 minutes in all, as the deposit's wait already allows for.
+      { timeout: (LOCAL ? 25 : 50) * 60_000, intervals: [5_000] },
     )
     .toBe(true);
   await expect(close, user.problems.join("\n")).toBeVisible();
