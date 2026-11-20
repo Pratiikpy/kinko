@@ -64,10 +64,10 @@ export interface DesiredShieldedOutput {
   readonly recipient: string;
 }
 
-/** A synced wallet answering connector calls. */
 /** How long a wallet may take to report a synced state before the test is told why it waits. */
 const SYNC_WAIT_MS = 10 * 60_000;
 
+/** A synced wallet answering connector calls. */
 export class DevWallet {
   private constructor(
     readonly label: string,

@@ -433,7 +433,7 @@ export interface PaidInvoice {
   readonly index: bigint;
   readonly txId: string;
   /** KUSD handed over: the invoice amount, or its converted price for a NIGHT invoice. */
-  readonly paid?: bigint;
+  readonly paid: bigint;
 }
 
 /**

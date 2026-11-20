@@ -24,7 +24,16 @@ import {
 } from "../src/index.ts";
 import { pureCircuits as vault } from "../src/managed/erc20-vault/contract/index.js";
 import { bytes32, hex, T0 } from "./harness.ts";
-import { base, coin, deployPay, InvoiceKind, KUSD, ledgerOf, TokenKind } from "./pay-fixtures.ts";
+import {
+  base,
+  coin,
+  deployPay,
+  InvoiceKind,
+  KUSD,
+  ledgerOf,
+  PAYER,
+  TokenKind,
+} from "./pay-fixtures.ts";
 
 // Circle's USDC on Ethereum mainnet and on Sepolia, plus edge-case addresses.
 const USDC_ADDRESSES = [
@@ -125,6 +134,8 @@ describe("the seal", () => {
       quote.expiresAt,
       signQuote(oracle, quote),
     );
+    // The first payment was made directly; the converted one is refunded by refund_converted.
+    h.as({ payerKey: PAYER });
     await h.call("refund_payment", InvoiceKind.MULTIPAY, TokenKind.KUSD, coin(42_500n, KUSD));
     await h.call("close_invoice", InvoiceKind.MULTIPAY, TokenKind.KUSD);
     expect(hex(ledgerOf(h).kusd_color)).toBe(hex(KUSD));

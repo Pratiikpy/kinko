@@ -119,14 +119,14 @@ export function InvoicePayment({
           index: out.index,
         },
         fromHex(account.encryptionPublicKey),
-        out.paid ?? terms.amount,
+        out.paid,
       );
       await update((doc) =>
         upsert(doc, "payments", {
           id: localId(),
           to: commitment.status === "ready" ? commitment.value : "",
           toLabel: meta.title ?? "an invoice",
-          amount: (out.paid ?? terms.amount).toString(),
+          amount: out.paid.toString(),
           createdAt: Date.now(),
           kind: "invoice",
           txId: out.txId,

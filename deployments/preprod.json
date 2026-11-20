@@ -8,8 +8,8 @@
     "y": "1d3a4dcd08f97ca49fdc22735972d519b66ea87415888cf4141ee87037d9096a"
   },
   "pay": {
-    "contractAddress": "8b5c3cbf3271e5aaab7a7b84a9f1628224526c3bab1a1893c569c7547d8379f7",
-    "txId": "00a678ea4488652b972e479cec06611b1f014842c19b431256bd314d45f9ccd9f2",
+    "contractAddress": "9354199dc0881169ae3d4b1f4e7d6963486d1e3695e9e70ea2671e2dd0c8fcf5",
+    "txId": "00bb3029df04da939ef7eeae9d26ced54e0ce00bad20018b90e962659ee8d99872",
     "circuits": [
       "create_invoice",
       "is_settled",
@@ -42,5 +42,5 @@
     "txId": "00052b98f30f5ea34071329c3723ee466bdc01529489b4d24de951be6b42094737",
     "circuits": ["file_record", "approve_case", "revoke_examiner", "open_case", "register_examiner"]
   },
-  "deployedAt": "2026-11-20T12:46:41.931Z"
+  "deployedAt": "2026-11-20T14:35:30.406Z"
 }

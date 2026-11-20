@@ -42,6 +42,7 @@ circuit domain_refund():   Bytes<32> { return pad(32, "kinko:refund:v1"); }
 circuit domain_attest():   Bytes<32> { return pad(32, "kinko:attest:v1"); }
 circuit domain_quote():    Bytes<32> { return pad(32, "kinko:quote:v1"); }
 circuit domain_converted(): Bytes<32> { return pad(32, "kinko:converted:v1"); }
+circuit domain_conversion(): Bytes<32> { return pad(32, "kinko:conversion:v1"); }
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -128,9 +129,17 @@ export ledger refunded: Set<Bytes<32>>;
 // A receipt alone does not say how its payment was made, and a refund must
 // return exactly what was paid, so settlement records a digest of the receipt,
 // the payer's secret key, the amount and the asset. The payer's key is in the
-// hash, so the amount stays private: only someone who holds the key, which is
-// the payer and whoever they give their refund code, can name it.
+// hash, so an observer who sees only the ledger cannot name the amount. Anyone
+// who holds the key can test amounts against it: the payer, anyone the payer
+// gave a receipt-proof link or a refund code, and the merchant, who received the
+// coin and so knows what it was worth.
 export ledger converted_payments: Set<Bytes<32>>;
+
+// The receipts of payments made through conversion, so refund_payment can refuse
+// them: such a payment is refunded in the asset that was paid, by refund_converted.
+// A mark says only that one public receipt was converted, which the circuit that
+// settled it already shows.
+export ledger converted_marks: Set<Bytes<32>>;
 
 // Published attestations. Each is a digest of a statement a merchant proved
 // about their own revenue. The statement is verifiable; the revenue is not.
@@ -341,6 +350,11 @@ export pure circuit converted_digest(
     payer,
     persistentHash<Vector<2, Uint<64>>>([converted, (paid_token as Uint<8>) as Uint<64>])
   ]);
+}
+
+// The public mark that a receipt's payment was made through conversion.
+export pure circuit conversion_mark(receipt: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([domain_conversion(), receipt]);
 }
 
 // The public tag an ownership secret hashes to.
@@ -718,6 +732,7 @@ export circuit settle_invoice_converted(
 
   // Keep what was paid, so a refund can return exactly that and only for a payment made this way.
   converted_payments.insert(disclose(converted_digest(receipt, payer, converted, paid_token)));
+  converted_marks.insert(disclose(conversion_mark(receipt)));
 
   forward(coin, payout);
   return receipt;
@@ -733,8 +748,11 @@ export circuit settle_invoice_converted(
 // merchant needs the payer's key, index and refund key, which the payer hands
 // over privately as a refund code. All three are witnesses; none is published.
 //
-// The refund is always in the invoice's own asset and amount, including for a
-// payment made through conversion.
+// A payment made directly is refunded in the invoice's own asset and amount.
+// A payment made through conversion is refused here and refunded by
+// refund_converted in the asset that was paid: letting both circuits take one
+// payment would let the merchant pick the cheaper refund, and the shared refunded
+// set would then bar the other for good.
 //
 // Known limit: a refunded receipt stays on the receipt tree, and a revenue
 // attestation does not subtract refunds. Proving a hidden receipt is absent
@@ -758,6 +776,10 @@ export circuit refund_payment(
   const refund_to = payer_refund();
   const receipt = disclose(receipt_digest(commitment, payer_key(), refund_to.bytes, index));
   assert(receipts.member(receipt), "no such payment");
+  assert(
+    !converted_marks.member(disclose(conversion_mark(receipt))),
+    "payment was made through conversion; refund it in the asset that was paid"
+  );
 
   const tag = disclose(refund_tag(receipt));
   assert(!refunded.member(tag), "payment already refunded");
@@ -782,7 +804,7 @@ export circuit refund_payment(
 // Settlement recorded what was paid and in which asset, bound to the payer's
 // key, so the circuit checks the amount and the asset against that record. It
 // refuses a payment that was not made through conversion, which refund_payment
-// returns in full, and an amount the payer did not pay, whether stated high
+// returns in full (and refund_payment refuses one that was), and an amount the payer did not pay, whether stated high
 // to take more or low to settle for less.
 export circuit refund_converted(
   kind: InvoiceKind,

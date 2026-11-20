@@ -1,3 +1,4 @@
+import { encodeRefundCode } from "@kinko/kinko-pay";
 import { FileCheck2, Send } from "lucide-react";
 import { useState } from "react";
 
@@ -12,7 +13,7 @@ import {
   PrivacyLine,
   SectionTitle,
 } from "../../components/ui.tsx";
-import { formatAmount, relativeTime } from "../../lib/format.ts";
+import { formatAmount, fromHex, relativeTime } from "../../lib/format.ts";
 import { parsePaymentLink } from "../../lib/pay.ts";
 import { encodeReceiptProof } from "../../lib/receipts.ts";
 import type { PaymentRecord } from "../../lib/records.ts";
@@ -25,9 +26,26 @@ function proofLink(p: PaymentRecord): string | null {
   return `${window.location.origin}/verify#${encodeReceiptProof({ contract: link.contractAddress, terms: link.terms, payerKey: p.payerKey, refundTo: p.refundTo, index: BigInt(p.index), title: link.meta.title })}`;
 }
 
+/**
+ * The refund code for a payment this device made, built again from what it kept. A refund code is
+ * shown once when the payment is made; this lets a payer who lost it ask for the refund anyway.
+ * It carries what was paid, which for a NIGHT invoice is the KUSD at the quoted rate.
+ */
+function refundCodeOf(p: PaymentRecord, encryptionPublicKey: string | undefined): string | null {
+  if (!p.receipt || !p.payerKey || !p.refundTo || p.index === undefined || !encryptionPublicKey)
+    return null;
+  return encodeRefundCode(
+    { payerKey: fromHex(p.payerKey), refundTo: fromHex(p.refundTo), index: BigInt(p.index) },
+    fromHex(encryptionPublicKey),
+    BigInt(p.amount),
+  );
+}
+
 function Row({ p }: { p: PaymentRecord }) {
+  const { account } = useAccount();
   const [open, setOpen] = useState(false);
   const proof = proofLink(p);
+  const refundCode = refundCodeOf(p, account?.encryptionPublicKey);
   return (
     <li className="py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -69,7 +87,9 @@ function Row({ p }: { p: PaymentRecord }) {
         <div className="mt-3 space-y-3 rounded-xl bg-surface-2 p-4">
           <p className="text-sm text-ink-2">
             Send this link to whoever needs proof. It shows this one payment, its amount and the
-            invoice it paid. It reveals no other payment of yours, and no balance.
+            invoice it paid. It reveals no other payment of yours, and no balance. It also holds
+            what is needed to write a refund request for this payment, so give it only to someone
+            you trust not to send the merchant a request that cannot be paid to you.
           </p>
           {proof ? (
             <Copyable value={proof} label="Proof link" />
@@ -79,6 +99,15 @@ function Row({ p }: { p: PaymentRecord }) {
               was made on an earlier version of the contract, whose links this version cannot read.
             </p>
           )}
+          {refundCode ? (
+            <div className="space-y-2">
+              <Copyable value={refundCode} label="Refund code" />
+              <p className="text-xs text-ink-3">
+                Give the refund code to the merchant only if you ask for a refund. It names this
+                payment and what you paid, and nothing else.
+              </p>
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Copyable value={p.receipt} label="Receipt" />
             {p.txId ? <Copyable value={p.txId} label="Transaction" /> : null}

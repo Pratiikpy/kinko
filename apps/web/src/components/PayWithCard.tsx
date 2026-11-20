@@ -71,7 +71,7 @@ export function PayWithCard({
         refundCode: encodeRefundCode(
           { payerKey: fromHex(out.payerKey), refundTo: fromHex(out.refundTo), index: out.index },
           fromHex(card.encryptionPublicKey),
-          out.paid ?? terms.amount,
+          out.paid,
         ),
       });
       onPaid();

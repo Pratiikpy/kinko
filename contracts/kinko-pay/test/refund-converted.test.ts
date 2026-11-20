@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import { generateOracleKeypair, refundTagOf, signQuote } from "../src/index.ts";
+import { pureCircuits } from "../src/managed/kinko_pay/contract/index.js";
 import { bytes32, hex, paidTo, T0 } from "./harness.ts";
 import {
   AMOUNT,
@@ -17,6 +18,7 @@ import {
   KUSD,
   ledgerOf,
   NATIVE,
+  PAYER,
   REFUND_TO,
   TokenKind,
 } from "./pay-fixtures.ts";
@@ -87,20 +89,60 @@ describe("refund_converted", () => {
     expect(ledgerOf(h).refunded.size()).toBe(1n);
   });
 
-  it("REFUSES a refund through refund_payment once refund_converted has returned the payment", async () => {
+  it("REFUSES refund_payment for a converted payment, before or after refund_converted", async () => {
     const { h, kind, invoiceToken, paidToken, paidColor } = await paidConverted();
+    await expect(
+      h.call("refund_payment", kind, invoiceToken, coin(AMOUNT, NATIVE)),
+    ).rejects.toThrow("payment was made through conversion; refund it in the asset that was paid");
+    // The refused attempt took nothing: the right refund is still open, and only once.
+    expect(ledgerOf(h).refunded.size()).toBe(0n);
     await h.call("refund_converted", kind, invoiceToken, paidToken, coin(CONVERTED, paidColor));
     await expect(
       h.call("refund_payment", kind, invoiceToken, coin(AMOUNT, NATIVE)),
-    ).rejects.toThrow("payment already refunded");
+    ).rejects.toThrow("payment was made through conversion; refund it in the asset that was paid");
+    expect(ledgerOf(h).refunded.size()).toBe(1n);
   });
 
-  it("REFUSES a refund through refund_converted once refund_payment has returned the payment", async () => {
-    const { h, kind, invoiceToken, paidToken, paidColor } = await paidConverted();
-    await h.call("refund_payment", kind, invoiceToken, coin(AMOUNT, NATIVE));
-    await expect(
-      h.call("refund_converted", kind, invoiceToken, paidToken, coin(CONVERTED, paidColor)),
-    ).rejects.toThrow("payment already refunded");
+  it("records the conversion against the payer's key, so the amount is testable only with it", async () => {
+    const { h, receipt, paidToken } = await paidConverted();
+    const l = ledgerOf(h);
+    expect(
+      l.converted_payments.member(
+        pureCircuits.converted_digest(receipt, PAYER, CONVERTED, paidToken),
+      ),
+    ).toBe(true);
+    // Another payer's key, another amount and the other asset each name nothing.
+    expect(
+      l.converted_payments.member(
+        pureCircuits.converted_digest(receipt, bytes32(0xaa), CONVERTED, paidToken),
+      ),
+    ).toBe(false);
+    expect(
+      l.converted_payments.member(
+        pureCircuits.converted_digest(receipt, PAYER, CONVERTED + 1n, paidToken),
+      ),
+    ).toBe(false);
+    expect(
+      l.converted_payments.member(
+        pureCircuits.converted_digest(
+          receipt,
+          PAYER,
+          CONVERTED,
+          paidToken === TokenKind.KUSD ? TokenKind.NATIVE : TokenKind.KUSD,
+        ),
+      ),
+    ).toBe(false);
+    expect(l.converted_marks.member(pureCircuits.conversion_mark(receipt))).toBe(true);
+    expect(l.converted_payments.size()).toBe(1n);
+    expect(l.converted_marks.size()).toBe(1n);
+  });
+
+  it("marks no conversion for a payment made directly", async () => {
+    const h = await deployPay(base());
+    await h.call("create_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, 0n);
+    await h.call("settle_invoice", InvoiceKind.STANDARD, TokenKind.KUSD, coin(AMOUNT, KUSD));
+    expect(ledgerOf(h).converted_payments.size()).toBe(0n);
+    expect(ledgerOf(h).converted_marks.size()).toBe(0n);
   });
 
   it("REFUSES a same-asset refund, which refund_payment already handles in the invoice's amount", async () => {
