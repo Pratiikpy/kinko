@@ -21,7 +21,6 @@ import {
   OWNER,
   type PayHarness,
   PAYOUT,
-  REFUND_ENC,
   SALT,
   TokenKind,
 } from "./pay-fixtures.ts";
@@ -30,6 +29,7 @@ import {
 const AMOUNT = 867_530_912_345_678n;
 const PAYERS = [bytes32(0x31), bytes32(0x32), bytes32(0x33), bytes32(0x34)] as const;
 const REFUNDS = [bytes32(0x41), bytes32(0x42), bytes32(0x43), bytes32(0x44)] as const;
+const ENCS = [bytes32(0x51), bytes32(0x52), bytes32(0x53), bytes32(0x54)] as const;
 const TOTAL = AMOUNT * 4n;
 
 /** One multipay invoice paid by four payers: four real receipts on the tree. */
@@ -38,7 +38,11 @@ async function merchantWithFourPayments(): Promise<{ h: PayHarness; receipts: Ui
   await h.call("create_invoice", InvoiceKind.MULTIPAY, TokenKind.NATIVE, 0n);
   const receipts: Uint8Array[] = [];
   for (let i = 0; i < 4; i++) {
-    h.as({ payerKey: nth(PAYERS, i), payerRefund: { bytes: nth(REFUNDS, i) } });
+    h.as({
+      payerKey: nth(PAYERS, i),
+      payerRefund: { bytes: nth(REFUNDS, i) },
+      payerRefundEnc: nth(ENCS, i),
+    });
     receipts.push(
       await h.call("settle_invoice", InvoiceKind.MULTIPAY, TokenKind.NATIVE, coin(AMOUNT)),
     );
@@ -65,7 +69,7 @@ const truth = (
   attestedPayouts: [PAYOUT, PAYOUT, PAYOUT, PAYOUT],
   attestedPayers: PAYERS,
   attestedRefunds: REFUNDS,
-  attestedEncs: [REFUND_ENC, REFUND_ENC, REFUND_ENC, REFUND_ENC],
+  attestedEncs: ENCS,
   attestedIndices: [0n, 0n, 0n, 0n],
   attestedPaths: receipts.map((r) => pathFor(h, r)),
   ...over,
@@ -144,6 +148,7 @@ describe("revenue attestation", () => {
       truth(h, receipts, {
         attestedPayers: [PAYERS[0], PAYERS[0], PAYERS[0], PAYERS[0]],
         attestedRefunds: [REFUNDS[0], REFUNDS[0], REFUNDS[0], REFUNDS[0]],
+        attestedEncs: [ENCS[0], ENCS[0], ENCS[0], ENCS[0]],
         attestedPaths: [one, one, one, one],
       }),
     );

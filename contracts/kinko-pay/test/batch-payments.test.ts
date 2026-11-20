@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { ownerTagOf, type PayPrivateState } from "../src/index.ts";
+import { invoiceCommitmentOf, ownerTagOf, type PayPrivateState, receiptOf } from "../src/index.ts";
 import { bytes32, hex, nth, paidTo } from "./harness.ts";
 import {
   base,
@@ -16,7 +16,10 @@ import {
   InvoiceKind,
   KUSD,
   ledgerOf,
+  PAYER,
   type PayHarness,
+  REFUND_ENC,
+  REFUND_TO,
   TokenKind,
 } from "./pay-fixtures.ts";
 
@@ -74,6 +77,33 @@ describe("batch payments", () => {
     expect(paidTo(h.last("settle_batch").zswapOutputs)).toEqual(
       PAYOUTS.map((p, i) => ({ to: hex(p), value: AMOUNTS[i], color: hex(KUSD) })),
     );
+  });
+
+  it("returns the receipts the app recomputes from the payer's refund key and encryption key", async () => {
+    const h = await fourOpenInvoices();
+    const receipts = await h.call("settle_batch", InvoiceKind.STANDARD, TokenKind.KUSD, coinsFor());
+    receipts.forEach((receipt, i) => {
+      const commitment = invoiceCommitmentOf({
+        merchantKey: nth(MERCHANTS, i),
+        payout: nth(PAYOUTS, i),
+        amount: nth(AMOUNTS, i),
+        kind: InvoiceKind.STANDARD,
+        token: TokenKind.KUSD,
+        salt: nth(SALTS, i),
+        owner: nth(OWNER_TAGS, i),
+        expiresAt: 0n,
+      });
+      expect(hex(receipt)).toBe(
+        hex(
+          receiptOf(commitment, InvoiceKind.STANDARD, {
+            payerKey: PAYER,
+            refundTo: REFUND_TO,
+            refundEnc: REFUND_ENC,
+            index: 0n,
+          }),
+        ),
+      );
+    });
   });
 
   it("REFUSES a batch containing an unknown invoice", async () => {

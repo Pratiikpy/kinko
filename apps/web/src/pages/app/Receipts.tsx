@@ -92,17 +92,25 @@ function Row({ p }: { p: PaymentRecord }) {
           <p className="text-sm text-ink-2">
             Send this link to whoever needs proof. It shows this one payment, its amount and the
             invoice it paid. It reveals no other payment of yours, and no balance. Where a refund of
-            this payment would go is fixed in the receipt, so the link cannot be used to send one
-            anywhere else.
+            this payment would go is fixed in the receipt, so the link cannot send one anywhere
+            else. It does hold everything a refund request needs, so anyone you give it to could ask
+            the merchant for a refund in your name: give it only to people you trust with that.
           </p>
           {proof ? (
             <Copyable value={proof} label="Proof link" />
           ) : (
             <p className="text-sm text-warn">
               A proof link cannot be built for this payment: its invoice terms were not kept, or it
-              was made on an earlier version of the contract, whose links this version cannot read.
+              was made on an earlier version of the contract, whose receipts this version cannot
+              read.
             </p>
           )}
+          {!refundCode ? (
+            <p className="text-xs text-ink-3">
+              No refund code can be built for this payment. Payments made on an earlier version of
+              the contract can no longer be refunded through Kinko.
+            </p>
+          ) : null}
           {refundCode ? (
             <div className="space-y-2">
               <Copyable value={refundCode} label="Refund code" />

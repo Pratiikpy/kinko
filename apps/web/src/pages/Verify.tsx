@@ -58,7 +58,11 @@ export default function Verify() {
           }}
           spellCheck={false}
           autoComplete="off"
-          error={text.trim() && !proof ? "That is not a Kinko receipt proof." : null}
+          error={
+            text.trim() && !proof
+              ? "That is not a receipt proof this version of Kinko can read. Proofs made on an earlier version name receipts it no longer holds."
+              : null
+          }
         />
         {proof ? (
           <div className="mt-6 space-y-4">

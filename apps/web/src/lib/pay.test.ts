@@ -17,6 +17,7 @@ import {
   parseShieldedAddress,
   paymentUrl,
   receiptFrom,
+  refundEncryptionMap,
   shieldedAddressOf,
   termsOfRecord,
 } from "./pay.ts";
@@ -104,6 +105,18 @@ describe("invoice records", () => {
   });
 });
 
+describe("refund encryption", () => {
+  it("maps the refund key to the payer's encryption key and nothing else", () => {
+    const payment = {
+      payerKey: new Uint8Array(32).fill(9),
+      refundTo: new Uint8Array(32).fill(8),
+      refundEnc: new Uint8Array(32).fill(7),
+      index: 0n,
+    };
+    expect([...refundEncryptionMap(payment)]).toEqual([["08".repeat(32), "07".repeat(32)]]);
+  });
+});
+
 describe("receipts", () => {
   it("recompute with the compiled circuit, the same way the contract does", () => {
     const t = terms();
@@ -115,6 +128,31 @@ describe("receipts", () => {
     expect(
       receiptFrom(toHex(c), "multipay", toHex(payerKey), toHex(refundTo), toHex(refundEnc), 3n),
     ).toBe(expected);
+  });
+
+  it("recompute from a proof with the refund key and the encryption key in their own places", () => {
+    const t = terms();
+    const proof = {
+      contract: PAY,
+      terms: t,
+      payerKey: "09".repeat(32),
+      refundTo: "08".repeat(32),
+      refundEnc: "07".repeat(32),
+      index: 2n,
+    };
+    const expected = toHex(
+      receiptOf(invoiceCommitmentOf(t), t.kind, {
+        payerKey: new Uint8Array(32).fill(9),
+        refundTo: new Uint8Array(32).fill(8),
+        refundEnc: new Uint8Array(32).fill(7),
+        index: 2n,
+      }),
+    );
+    expect(claimedBy(proof).receipt).toBe(expected);
+    // Swapping the two keys names another receipt.
+    expect(
+      claimedBy({ ...proof, refundTo: proof.refundEnc, refundEnc: proof.refundTo }).receipt,
+    ).not.toBe(expected);
   });
 
   it("travel as a proof that round-trips and checks to the same receipt", () => {

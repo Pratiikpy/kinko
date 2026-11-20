@@ -24,6 +24,7 @@ import {
   OWNER,
   PAYER,
   PAYOUT,
+  REFUND_ENC,
   REFUND_TO,
   SALT,
   TokenKind,
@@ -43,6 +44,7 @@ const leaks = (view: string): string[] => [
     "owner secret": OWNER,
     "payer key": PAYER,
     "refund key": REFUND_TO,
+    "refund encryption key": REFUND_ENC,
   })
     .filter(([, secret]) => view.includes(hex(secret)))
     .map(([name]) => name),

@@ -241,9 +241,12 @@ witness payer_refund(): ZswapCoinPublicKey;
 
 // The encryption public key the payer's wallet decrypts coins with. A refund
 // coin is encrypted to it, so a coin encrypted to any other key is one the payer
-// cannot read. Bound into the receipt with the refund key, so the key a merchant
-// encrypts a refund to is the one the payer named when paying, and nobody who
-// holds a proof of the payment can supply another.
+// cannot read. Bound into the receipt with the refund key, so a refund names a
+// payment only with the key the payer chose when paying. The circuit checks the
+// key supplied as this witness; the encryption itself happens in the wallet, from
+// the key the merchant's client maps to the refund key. A client that maps a
+// different key still passes the circuit and produces a coin the payer cannot
+// read, so a merchant client must take both from the refund code.
 witness payer_refund_enc(): Bytes<32>;
 
 // Distinguishes deliberate repeat contributions to a multipay or donation

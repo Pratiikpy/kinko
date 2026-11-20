@@ -107,7 +107,7 @@ function Refund({ commitment }: { commitment: string }) {
           autoComplete="off"
           error={
             code.trim() && !payment
-              ? "That is not a refund code this version of Kinko can read. A payer can copy a current one from their receipt."
+              ? "That is not a refund code this version of Kinko can read. Codes from payments made on an earlier version of the contract name receipts it no longer holds."
               : null
           }
         />

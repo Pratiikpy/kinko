@@ -577,6 +577,17 @@ export async function closeInvoice(p: OwnerAction): Promise<CallResult> {
   );
 }
 
+/**
+ * Which encryption key the wallet encrypts a refund coin to. The contract checks that the key the
+ * merchant supplies as a witness is the one in the receipt, but the encryption itself happens in
+ * the wallet from this map, so both must come from the payer's key in the refund code.
+ *
+ * @param payment - The payment the refund code names.
+ * @returns The refund key's coin public key mapped to the payer's encryption public key, as hex.
+ */
+export const refundEncryptionMap = (payment: PaymentSecrets): Map<string, string> =>
+  new Map([[toHex(payment.refundTo), toHex(payment.refundEnc)]]);
+
 /** What refunding one payment needs, on top of the owner's secret. */
 export interface RefundRequest extends OwnerAction {
   readonly payment: PaymentSecrets;
@@ -610,7 +621,7 @@ export async function refundPayment(p: RefundRequest): Promise<CallResult<Uint8A
     "refund_payment",
     [p.terms.kind, p.terms.token, coin],
     p.onStage,
-    new Map([[toHex(p.payment.refundTo), toHex(p.payment.refundEnc)]]),
+    refundEncryptionMap(p.payment),
   );
 }
 
@@ -651,7 +662,7 @@ export async function refundConvertedPayment(
     "refund_converted",
     [p.terms.kind, p.terms.token, KinkoPay.TokenKind.KUSD, coin],
     p.onStage,
-    new Map([[toHex(p.payment.refundTo), toHex(p.payment.refundEnc)]]),
+    refundEncryptionMap(p.payment),
   );
 }
 
