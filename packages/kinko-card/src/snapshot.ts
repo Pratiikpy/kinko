@@ -17,7 +17,8 @@
 // from the chain's stalls the wallet, which then starts again from the first
 // event. What cannot be checked here is that the tree is the chain's right one, so
 // the worst a bad snapshot does is leave a card unable to pay until it is opened
-// again without one.
+// again without one. On preprod a tree with
+// every hash changed still opened and spent (docs/THREAT-MODEL.md).
 
 import type { CardAddresses } from "./keys.ts";
 
