@@ -163,7 +163,11 @@ test("a card and its PIN pay an invoice with no wallet, then the owner freezes i
   await expect(page.getByText("Paid", { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("Paid from the card")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Copy Receipt:/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Copy Refund code:/ })).toBeVisible();
+  const cardCodeLabel = await page
+    .getByRole("button", { name: /^Copy Refund code:/ })
+    .getAttribute("aria-label");
+  const cardRefundCode = cardCodeLabel?.replace(/^Copy Refund code:\s*/, "") ?? "";
+  expect(cardRefundCode.length).toBeGreaterThan(20);
   await expect(page.getByRole("button", { name: "Connect to pay" })).toHaveCount(0);
   await page.screenshot({ path: `${RESULTS}/shots/card-paid.png`, fullPage: true });
   await consoleSettled();
@@ -181,6 +185,23 @@ test("a card and its PIN pay an invoice with no wallet, then the owner freezes i
     })
     .toBe(load - price);
 
+  // The merchant refunds the payment with the card's refund code. The refund goes to the card's
+  // own key, encrypted to the card's own encryption key, so the card finds it with no wallet.
+  await merchant.page.getByRole("link", { name: "Track it" }).click();
+  await merchant.page.getByLabel("Refund code").fill(cardRefundCode);
+  await merchant.page.getByRole("button", { name: "Refund $1.25" }).click();
+  await expect(merchant.page.getByText("Refunded to the payer's key.")).toBeVisible({
+    timeout: 15 * 60_000,
+  });
+  await shot(merchant, "card-refunded");
+  await expect.poll(() => merchant.wallet.balance(kusd), { timeout: SYNC_MS }).toBe(merchantBefore);
+  await expect
+    .poll(() => cardBalanceOnChain(entropy, kusd, decoded.birth), {
+      timeout: SYNC_MS,
+      intervals: [5_000],
+    })
+    .toBe(load);
+
   // The owner refuses a wrong PIN, then freezes the card.
   await owner.page.goto("/app/card");
   await owner.page.getByRole("button", { name: "Manage" }).first().click();
@@ -193,15 +214,13 @@ test("a card and its PIN pay an invoice with no wallet, then the owner freezes i
   await owner.page.getByLabel("PIN, to open the card").fill(PIN);
   await owner.page.getByRole("button", { name: "Open", exact: true }).click();
   const ownerMid = await owner.wallet.balance(kusd);
-  await owner.page.getByRole("button", { name: "Freeze: move $1.75 back" }).click({
+  await owner.page.getByRole("button", { name: "Freeze: move $3.00 back" }).click({
     timeout: OPEN_MS,
   });
   expect((await ownerStarted).status()).toBe(200);
   await finished(owner, "Frozen. The balance is back in your account.");
   await shot(owner, "card-frozen");
-  await expect
-    .poll(() => owner.wallet.balance(kusd), { timeout: SYNC_MS })
-    .toBe(ownerMid + load - price);
+  await expect.poll(() => owner.wallet.balance(kusd), { timeout: SYNC_MS }).toBe(ownerMid + load);
   await expect
     .poll(() => cardBalanceOnChain(entropy, kusd, decoded.birth), {
       timeout: SYNC_MS,

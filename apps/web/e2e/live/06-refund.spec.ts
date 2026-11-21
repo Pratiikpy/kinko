@@ -63,6 +63,16 @@ test("a merchant refunds a payment with the customer's refund code, once", async
     .poll(() => merchant.wallet.balance(kusd), { timeout: 5 * 60_000 })
     .toBe(merchantBefore + AMOUNT);
 
+  // A payer who lost the code finds it again on the Receipts page, built from what the app kept:
+  // it is the same code, so the merchant can refund with either.
+  await customer.page.getByRole("link", { name: "Receipts" }).first().click();
+  await customer.page.getByRole("button", { name: "Prove" }).first().click();
+  const keptLabel = await customer.page
+    .getByRole("button", { name: /^Copy Refund code:/ })
+    .getAttribute("aria-label");
+  expect(keptLabel?.replace(/^Copy Refund code:\s*/, "")).toBe(refundCode);
+  await shot(customer, "receipts-refund-code");
+
   // The merchant opens the invoice and refunds the payment the code names.
   await merchant.page.getByRole("link", { name: "Track it" }).click();
   await merchant.page.getByLabel("Refund code").fill(refundCode);

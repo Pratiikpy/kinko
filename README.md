@@ -125,7 +125,7 @@ yarn workspace @kinko/web dev
 
 Signing in with an Ethereum wallet through 1AM's vault also needs `yarn workspace @kinko/web vault`, which serves NightKit's vault on its own origin.
 
-`yarn workspace @kinko/deploy smoke:pay` creates and pays a $1 invoice from Node, with real proofs, as a quick check that the stack and contracts are healthy. `smoke:card` funds a fresh card, pays an invoice from it through the sponsor and sweeps it back.
+`yarn workspace @kinko/deploy smoke:pay` creates and pays a $1 invoice from Node, with real proofs, as a quick check that the stack and contracts are healthy. `smoke:batch` runs the contract's batch circuit, which the app does not use (it pays a batch as plain transfers): four invoices paid in one call, each receipt checked against the one the app recomputes, then one of the four refunded and a second refund refused; it passed on preprod against the final deployment. `smoke:card` funds a fresh card, pays an invoice from it through the sponsor and sweeps it back.
 
 ## Run it on preprod
 

@@ -13,6 +13,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "smoke:pay": "tsx src/smoke-pay.ts",
+    "smoke:batch": "tsx src/smoke-batch.ts",
     "smoke:card": "tsx src/smoke-card.ts",
     "fund-roles": "tsx src/fund-roles.ts",
     "sync-wallets": "tsx src/sync-wallets.ts"
