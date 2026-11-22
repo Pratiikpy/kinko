@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+    <style>
+      /* Absolute layout: lanes at y 150..750; boxes are placed inside lanes, arrows in page coordinates. */
+      body {
+        width: 1600px;
+        height: 984px;
+        position: relative;
+        overflow: hidden;
+      }
+      .title {
+        position: absolute;
+        left: 64px;
+        top: 44px;
+      }
+      .title .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 14px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        font-weight: 600;
+        color: var(--shu-ink);
+      }
+      .title .eyebrow i {
+        width: 30px;
+        height: 2px;
+        background: var(--shu);
+        display: block;
+      }
+      .title h2 {
+        font-family: "Shippori Mincho", serif;
+        font-weight: 700;
+        font-size: 40px;
+        margin-top: 10px;
+      }
+      .legend {
+        position: absolute;
+        right: 64px;
+        top: 70px;
+        font-size: 14px;
+        color: var(--ink-3);
+        display: flex;
+        gap: 22px;
+        align-items: center;
+      }
+      .legend i {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 4px;
+        margin-right: 7px;
+        vertical-align: -1px;
+      }
+      .lane {
+        position: absolute;
+        top: 150px;
+        height: 624px;
+        border-radius: 22px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+      }
+      .lane > .name {
+        position: absolute;
+        left: 24px;
+        top: 20px;
+        font-size: 13px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: var(--ink-3);
+      }
+      .lane > .sub {
+        position: absolute;
+        left: 24px;
+        top: 42px;
+        font-size: 14px;
+        color: var(--ink-3);
+      }
+      #eth {
+        left: 64px;
+        width: 420px;
+      }
+      #sig {
+        left: 520px;
+        width: 300px;
+        background: var(--surface-2);
+      }
+      #mid {
+        left: 856px;
+        width: 680px;
+      }
+      .box {
+        position: absolute;
+        background: var(--paper);
+        border: 1px solid var(--line-strong);
+        border-radius: 14px;
+        padding: 16px 18px;
+      }
+      .box h3 {
+        font-family: "Shippori Mincho", serif;
+        font-weight: 700;
+        font-size: 21px;
+        line-height: 1.2;
+      }
+      .box p {
+        margin-top: 6px;
+        font-size: 14.5px;
+        line-height: 1.45;
+        color: var(--ink-2);
+      }
+      .tagline {
+        display: inline-block;
+        margin-top: 10px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 4px 10px;
+        border-radius: 99px;
+      }
+      .pub {
+        background: var(--ok-soft);
+        color: var(--ok);
+      }
+      .box.shu {
+        background: var(--shu-soft);
+        border-color: #e6b9ac;
+      }
+      .mini {
+        position: absolute;
+        background: var(--paper);
+        border: 1px solid var(--line-strong);
+        border-radius: 12px;
+        padding: 12px 14px;
+        width: 144px;
+        height: 118px;
+      }
+      .mini b {
+        display: block;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--shu-ink);
+      }
+      .mini span {
+        display: block;
+        margin-top: 5px;
+        font-size: 13px;
+        line-height: 1.38;
+        color: var(--ink-2);
+      }
+      .note {
+        position: absolute;
+        left: 24px;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--ink-3);
+        width: 632px;
+      }
+      .actors {
+        position: absolute;
+        left: 64px;
+        width: 1472px;
+        top: 800px;
+        height: 82px;
+        display: flex;
+        gap: 20px;
+      }
+      .actor {
+        flex: 1;
+        border-radius: 14px;
+        background: var(--ink);
+        color: #f3eee7;
+        padding: 14px 20px;
+        font-size: 15px;
+        line-height: 1.4;
+      }
+      .actor b {
+        font-family: "Shippori Mincho", serif;
+        font-size: 19px;
+        font-weight: 700;
+        display: block;
+        margin-bottom: 2px;
+      }
+      .n {
+        position: absolute;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--shu);
+        color: #fff;
+        font-weight: 700;
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 0 4px var(--paper);
+        z-index: 5;
+      }
+      svg.arrows {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1600px;
+        height: 984px;
+        pointer-events: none;
+        z-index: 3;
+      }
+      .steps {
+        position: absolute;
+        left: 64px;
+        top: 902px;
+        width: 1472px;
+        font-size: 14px;
+        color: var(--ink-3);
+        line-height: 1.6;
+      }
+      .steps b {
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="title">
+      <div class="eyebrow"><i></i>Architecture</div>
+      <h2>Two chains, one balance only you can see</h2>
+    </div>
+    <div class="legend">
+      <span><i style="background: var(--ok)"></i>public, anyone can check</span
+      ><span><i style="background: var(--shu)"></i>private, only the people involved</span>
+    </div>
+
+    <!-- Ethereum lane: x 64..484 -->
+    <div class="lane" id="eth">
+      <div class="name">Ethereum (Sepolia)</div>
+      <div class="sub">where the real USDC sits</div>
+      <div class="box" style="left: 24px; top: 92px; width: 372px; height: 150px">
+        <h3>Deposit address</h3>
+        <p>
+          Derived by the MPC from your private identity. A normal USDC transfer goes here; nobody
+          holds its key.
+        </p>
+        <span class="tagline pub">sender and amount are public</span>
+      </div>
+      <div class="box" style="left: 24px; top: 300px; width: 372px; height: 176px">
+        <h3>Vault account</h3>
+        <p>
+          Holds all the USDC. Its key exists only as shares held by Sig Network's signers, and they
+          sign only what the Midnight vault contract asks for.
+        </p>
+        <span class="tagline pub">balance checkable in your browser</span>
+      </div>
+    </div>
+
+    <!-- Signers lane: x 520..820 -->
+    <div class="lane" id="sig">
+      <div class="name">Sig Network MPC</div>
+      <div class="sub">threshold signers</div>
+      <div class="box" style="left: 20px; top: 110px; width: 260px; height: 190px">
+        <h3>Attest and sign</h3>
+        <p>
+          Sweep the deposit into the vault and attest it. Sign the vault's withdrawal transfer. No
+          single signer can act alone.
+        </p>
+      </div>
+      <div class="box" style="left: 20px; top: 330px; width: 260px; height: 150px">
+        <h3>Relayer</h3>
+        <p>
+          Carries each request through its permissionless steps. It holds no user key and cannot
+          mint.
+        </p>
+      </div>
+    </div>
+
+    <!-- Midnight lane: x 856..1536 -->
+    <div class="lane" id="mid">
+      <div class="name">Midnight (preprod)</div>
+      <div class="sub">shielded KUSD, zero-knowledge payments</div>
+      <div class="box" style="left: 24px; top: 92px; width: 630px; height: 150px">
+        <h3>Vault contract</h3>
+        <p>
+          Mints KUSD only after the signers attest the matching USDC arrived, burns it on
+          withdrawal, and counts both in public. A mint without the attestation is refused by the
+          contract itself.
+        </p>
+        <span class="tagline pub">public counters: minted, burned</span>
+      </div>
+      <div class="box shu" style="left: 24px; top: 290px; width: 630px; height: 100px">
+        <h3>KUSD, a shielded coin</h3>
+        <p>
+          Who holds it and how much stay on the holder's device and inside zero-knowledge proofs.
+        </p>
+      </div>
+      <div class="mini" style="left: 24px; top: 430px">
+        <b>kinko_pay</b><span>invoices, receipts, refunds, NIGHT-priced invoices</span>
+      </div>
+      <div class="mini" style="left: 186px; top: 430px">
+        <b>kinko_tags</b><span>pay a person by @name</span>
+      </div>
+      <div class="mini" style="left: 348px; top: 430px">
+        <b>kinko_gift</b><span>gift and PIN cards, no wallet needed</span>
+      </div>
+      <div class="mini" style="left: 510px; top: 430px">
+        <b>kinko_disclosure</b><span>sealed records, opened by 2 of 3 keyholders</span>
+      </div>
+      <div class="note" style="top: 562px">
+        Each Kinko contract is written in Compact. Witnesses carry the private inputs; only
+        commitments, nullifiers and statuses reach the public ledger.
+      </div>
+    </div>
+
+    <div class="actors">
+      <div class="actor"><b>You</b>A browser and a Midnight or Ethereum wallet</div>
+      <div class="actor"><b>A merchant</b>Invoices, hosted checkout, SDK, CLI, MCP server</div>
+      <div class="actor">
+        <b>A card holder</b>Gift or PIN card, no wallet; Kinko's sponsor pays the fee
+      </div>
+    </div>
+
+    <div class="steps">
+      <b>1</b> USDC arrives at the deposit address &nbsp;·&nbsp; <b>2</b> the signers sweep it into
+      the vault and attest it &nbsp;·&nbsp; <b>3</b> the vault contract accepts the attestation
+      &nbsp;·&nbsp; <b>4</b> and mints KUSD under a fresh nonce &nbsp;·&nbsp; <b>5</b> KUSD pays
+      invoices, @tags, gifts and cards in private. A withdrawal runs the same road backwards: burn
+      the KUSD, and the signers send the USDC.
+    </div>
+
+    <svg class="arrows" viewBox="0 0 1600 960">
+      <defs>
+        <marker
+          id="a"
+          viewBox="0 0 10 10"
+          refX="8"
+          refY="5"
+          markerWidth="8"
+          markerHeight="8"
+          orient="auto"
+        >
+          <path d="M1 1 L9 5 L1 9 Z" fill="#c23a22" />
+        </marker>
+      </defs>
+      <g fill="none" stroke="#c23a22" stroke-width="3" marker-end="url(#a)" stroke-linecap="round">
+        <path d="M274 392 L274 450" />
+        <!-- 1 deposit address to vault account -->
+        <path d="M460 538 C 500 538 500 380 540 380" />
+        <!-- 2 vault account to signers -->
+        <path d="M800 330 L880 330" />
+        <!-- 3 signers to vault contract -->
+        <path d="M1196 392 L1196 438" />
+        <!-- 4 vault contract to KUSD -->
+        <path d="M1196 540 L1196 578" />
+        <!-- 5 KUSD to the contracts -->
+      </g>
+    </svg>
+    <div class="n" style="left: 300px; top: 406px">1</div>
+    <div class="n" style="left: 491px; top: 442px">2</div>
+    <div class="n" style="left: 825px; top: 290px">3</div>
+    <div class="n" style="left: 1222px; top: 402px">4</div>
+    <div class="n" style="left: 1222px; top: 544px">5</div>
+  </body>
+</html>

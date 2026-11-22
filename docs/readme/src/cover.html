@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+    <!-- Rendered by docs/readme/render.mjs, which passes the live backing figures as ?usdc=&kusd=&cov= -->
+    <style>
+      body {
+        width: 1600px;
+        height: 640px;
+        position: relative;
+        overflow: hidden;
+      }
+      .grain {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(900px 500px at 88% 10%, rgba(194, 58, 34, 0.1), transparent 60%),
+          radial-gradient(700px 420px at 6% 110%, rgba(194, 58, 34, 0.06), transparent 60%);
+      }
+      .left {
+        position: absolute;
+        left: 96px;
+        top: 84px;
+        width: 760px;
+      }
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 15px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        font-weight: 600;
+        color: var(--shu-ink);
+      }
+      .eyebrow i {
+        display: block;
+        width: 34px;
+        height: 2px;
+        background: var(--shu);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 26px;
+        margin-top: 30px;
+      }
+      .brand svg {
+        width: 104px;
+        height: 104px;
+      }
+      h1 {
+        font-family: "Shippori Mincho", serif;
+        font-weight: 700;
+        font-size: 104px;
+        line-height: 1;
+        letter-spacing: -0.01em;
+      }
+      h1 span {
+        font-weight: 500;
+        font-size: 56px;
+        color: var(--ink-3);
+        margin-left: 18px;
+        letter-spacing: 0.02em;
+      }
+      .tag {
+        margin-top: 34px;
+        font-family: "Shippori Mincho", serif;
+        font-weight: 500;
+        font-size: 40px;
+        line-height: 1.28;
+        max-width: 740px;
+      }
+      .tag em {
+        font-style: normal;
+        color: var(--shu);
+      }
+      .sub {
+        margin-top: 26px;
+        font-size: 20px;
+        line-height: 1.55;
+        color: var(--ink-2);
+        max-width: 700px;
+      }
+      .right {
+        position: absolute;
+        right: 84px;
+        top: 112px;
+        width: 600px;
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        box-shadow: 0 24px 60px -28px rgba(27, 24, 21, 0.35);
+        padding: 30px 34px;
+      }
+      .k {
+        font-size: 13px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-weight: 600;
+        color: var(--ink-3);
+      }
+      .row {
+        margin-top: 16px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .lbl {
+        font-size: 17px;
+        color: var(--ink-2);
+        margin-bottom: 4px;
+      }
+      .big {
+        font-family: "Shippori Mincho", serif;
+        font-weight: 600;
+        font-size: 54px;
+        line-height: 1.05;
+      }
+      .chain {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        padding: 4px 10px;
+        border-radius: 99px;
+        background: var(--surface-2);
+        color: var(--ink-3);
+        margin-left: 10px;
+        vertical-align: middle;
+      }
+      .cover {
+        margin-top: 18px;
+        background: var(--ok-soft);
+        color: var(--ok);
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .pills {
+        position: absolute;
+        left: 96px;
+        bottom: 46px;
+        display: flex;
+        gap: 12px;
+      }
+      .pill {
+        font-size: 16px;
+        font-weight: 600;
+        padding: 9px 18px;
+        border-radius: 99px;
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        color: var(--ink-2);
+      }
+      .pill b {
+        color: var(--shu-ink);
+        font-weight: 700;
+      }
+      .seal {
+        position: absolute;
+        right: 54px;
+        bottom: 34px;
+        font-family: "Shippori Mincho", serif;
+        font-weight: 500;
+        color: var(--ink-3);
+        font-size: 15px;
+        letter-spacing: 0.08em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grain"></div>
+    <div class="left">
+      <div class="eyebrow"><i></i>Private dollars, counted in public</div>
+      <div class="brand">
+        <svg viewBox="0 0 64 64" role="img" aria-label="Kinko">
+          <rect x="2" y="2" width="60" height="60" rx="13" fill="#c23a22" />
+          <rect
+            x="6.5"
+            y="6.5"
+            width="51"
+            height="51"
+            rx="9"
+            fill="none"
+            stroke="#fbf5ec"
+            stroke-width="1.6"
+          />
+          <g
+            fill="none"
+            stroke="#fbf5ec"
+            stroke-width="4.2"
+            stroke-linecap="square"
+            stroke-linejoin="miter"
+          >
+            <path d="M14.5 27 L32 12.5 L49.5 27" />
+            <path d="M23 30.5 H41" />
+            <path d="M18 39 H46" />
+            <path d="M32 30.5 V51" />
+            <path d="M21 42.5 L23.5 46" />
+            <path d="M43 42.5 L40.5 46" />
+            <path d="M14.5 51.5 H49.5" />
+          </g>
+        </svg>
+        <h1>Kinko<span>金庫</span></h1>
+      </div>
+      <p class="tag">
+        A private dollar account on Midnight, <em>backed one to one</em> by USDC anyone can count.
+      </p>
+      <p class="sub">
+        Pay, invoice, refund and gift in private. Check the reserve in public, from your own
+        browser.
+      </p>
+    </div>
+    <div class="right">
+      <div class="card">
+        <div class="k">Backing, read from the live preprod deployment</div>
+        <div class="row">
+          <div class="lbl">USDC held by the vault <span class="chain">Ethereum Sepolia</span></div>
+          <div class="big" id="usdc">$ 0.00</div>
+        </div>
+        <div class="row" style="border-bottom: 0; padding-bottom: 0">
+          <div class="lbl">Private dollars in circulation <span class="chain">Midnight</span></div>
+          <div class="big" id="kusd">$ 0.00</div>
+        </div>
+        <div class="cover" id="cov"></div>
+      </div>
+    </div>
+    <div class="pills">
+      <span class="pill"><b>5</b> Compact contracts on preprod</span>
+      <span class="pill"><b>12</b> flows run live</span>
+      <span class="pill">Independent AI code reviews</span>
+      <span class="pill">Apache-2.0</span>
+    </div>
+    <div class="seal">Midnight Buildathon</div>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const fmt = (v) =>
+        "$ " +
+        Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      document.getElementById("usdc").textContent = fmt(q.get("usdc") ?? 0);
+      document.getElementById("kusd").textContent = fmt(q.get("kusd") ?? 0);
+      document.getElementById("cov").textContent =
+        "✓  Backing covers circulation: " + (q.get("cov") ?? "");
+    </script>
+  </body>
+</html>
