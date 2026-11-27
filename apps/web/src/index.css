@@ -128,6 +128,11 @@ body::before {
 
 /* In the base layer, so a component's own text colour (a primary button's white) wins over it. */
 @layer base {
+  /* An icon beside wrapping text keeps its size instead of being squeezed to a dot. */
+  svg.lucide {
+    flex-shrink: 0;
+  }
+
   button,
   input,
   select,

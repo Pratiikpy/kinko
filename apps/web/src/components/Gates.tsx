@@ -1,5 +1,7 @@
+import { Compass, CreditCard, Scale } from "lucide-react";
 import { ConnectButton } from "nightkit-react";
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 
 import { CONTRACT_ENV, CONTRACTS, type KinkoContract } from "../lib/config.ts";
 import { useAccount } from "../state/account.tsx";
@@ -14,16 +16,19 @@ export function ConnectGate({ children, what }: { children: ReactNode; what: str
   const { account, records, recordsError, sync } = useAccount();
   if (!account) {
     return (
-      <Card className="text-center">
-        <p className="font-display text-xl text-ink">Connect to {what}</p>
-        <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-ink-2">
-          Use a Midnight wallet, or open a private account from MetaMask, Phantom or Coinbase Wallet
-          with one signature. Your keys stay in a vault this page cannot read.
-        </p>
-        <div className="mt-5 flex justify-center">
-          <ConnectButton label="Connect wallet" />
-        </div>
-      </Card>
+      <>
+        <Card className="text-center">
+          <p className="font-display text-xl text-ink">Connect to {what}</p>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-ink-2">
+            Use a Midnight wallet, or open a private account from MetaMask, Phantom or Coinbase
+            Wallet with one signature. Your keys stay in a vault this page cannot read.
+          </p>
+          <div className="mt-5 flex justify-center">
+            <ConnectButton label="Connect wallet" />
+          </div>
+        </Card>
+        <WithoutAWallet />
+      </>
     );
   }
   if (recordsError) {
@@ -54,6 +59,54 @@ export function ConnectGate({ children, what }: { children: ReactNode; what: str
       ) : null}
       {children}
     </>
+  );
+}
+
+/** What works before connecting: the parts of Kinko that need no wallet at all. */
+const NO_WALLET = [
+  {
+    to: "/backing",
+    Icon: Scale,
+    title: "Count the reserve",
+    text: "Read the vault's USDC and the KUSD in circulation, live from both chains.",
+  },
+  {
+    to: "/card",
+    Icon: CreditCard,
+    title: "Open a card you were given",
+    text: "A gift card or PIN card opens and pays with no wallet; Kinko covers the fee.",
+  },
+  {
+    to: "/walkthrough",
+    Icon: Compass,
+    title: "Take the guided tour",
+    text: "Seven stops through the whole product, with what to look for at each.",
+  },
+] as const;
+
+function WithoutAWallet() {
+  return (
+    <div className="mt-6">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-ink-3">
+        No wallet needed
+      </p>
+      <ul className="grid gap-3 sm:grid-cols-3">
+        {NO_WALLET.map(({ to, Icon, title, text }) => (
+          <li key={to}>
+            <Link
+              to={to}
+              className="group flex h-full flex-col rounded-2xl border border-line bg-surface p-4 transition hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-shu"
+            >
+              <Icon aria-hidden className="h-5 w-5 text-shu" />
+              <span className="mt-3 font-display text-base text-ink group-hover:underline">
+                {title}
+              </span>
+              <span className="mt-1 text-sm leading-relaxed text-ink-2">{text}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

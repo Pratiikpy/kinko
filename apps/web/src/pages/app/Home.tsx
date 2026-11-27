@@ -37,8 +37,8 @@ function Balance() {
       <div className="relative">
         <div className="flex items-center justify-between gap-3">
           <p className="flex items-center gap-2 text-sm text-ink-2">
-            <EyeOff aria-hidden className="h-4 w-4 text-shu" /> Private balance · only you can see
-            it
+            <EyeOff aria-hidden className="h-4 w-4 shrink-0 text-shu" />
+            <span className="text-balance">Private balance · only you can see it</span>
           </p>
           <button
             type="button"
