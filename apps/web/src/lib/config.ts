@@ -167,3 +167,6 @@ export const PROOF_SERVER_URL = url(env.VITE_PROOF_SERVER_URL) ?? "http://localh
 
 /** USDC has six decimals on every chain Kinko supports; KUSD mirrors it. */
 export const USDC_DECIMALS = 6;
+
+/** Kinko's public source code, Apache-2.0. */
+export const SOURCE_URL = "https://github.com/Pratiikpy/kinko";

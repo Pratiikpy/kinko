@@ -26,7 +26,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
-import { NETWORK_ID } from "../lib/config.ts";
+import { NETWORK_ID, SOURCE_URL } from "../lib/config.ts";
 import { useDeployment } from "../state/deployment.tsx";
 import { useTheme } from "../state/theme.tsx";
 import { Wordmark } from "./Logo.tsx";
@@ -437,6 +437,14 @@ export function Footer() {
           <Link className="flex min-h-11 items-center text-ink-2 hover:text-ink" to="/privacy">
             Privacy and limits
           </Link>
+          <a
+            className="flex min-h-11 items-center text-ink-2 hover:text-ink"
+            href={SOURCE_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Source code
+          </a>
         </nav>
         <div className="grid content-start gap-2 text-ink-2">
           <p className="font-semibold text-ink">Status</p>

@@ -1,5 +1,6 @@
 import { Code, Prose, Toc } from "../components/Prose.tsx";
 import { PageHeader } from "../components/ui.tsx";
+import { SOURCE_URL } from "../lib/config.ts";
 import { relayer } from "../lib/relayer.ts";
 
 const SECTIONS = [
@@ -19,7 +20,17 @@ export default function Developer() {
     <div>
       <PageHeader eyebrow="Developers" title="Build on Kinko">
         The contracts' TypeScript surface runs unchanged in a browser or a server. Every digest it
-        returns comes from the contracts' own compiled circuits.
+        returns comes from the contracts' own compiled circuits. The full source, the deployed
+        addresses and how to run it are{" "}
+        <a
+          className="font-medium text-shu-ink hover:underline"
+          href={SOURCE_URL}
+          target="_blank"
+          rel="noreferrer"
+        >
+          on GitHub
+        </a>
+        .
       </PageHeader>
       <div className="grid gap-10 xl:grid-cols-[1fr_14rem]">
         <Prose>
