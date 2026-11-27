@@ -139,6 +139,7 @@ export default function HeldCard() {
     return (
       <div className="mx-auto max-w-xl px-4 py-12">
         <EmptyState
+          main
           title="This card link is incomplete"
           action={
             <Link

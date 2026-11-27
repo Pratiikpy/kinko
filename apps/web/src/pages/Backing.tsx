@@ -396,7 +396,11 @@ export default function Backing() {
           contract's public supply counters, which any Midnight indexer serves; the second command
           is the relayer's own report, so it answers only where this app is served.
         </p>
-        <pre className="mt-3 overflow-x-auto rounded-xl bg-surface-2 p-4 font-mono text-xs leading-relaxed text-ink">
+        <pre
+          tabIndex={0}
+          aria-label="Commands to check the backing yourself"
+          className="mt-3 overflow-x-auto rounded-xl bg-surface-2 p-4 font-mono text-xs leading-relaxed text-ink focus-visible:outline-2 focus-visible:outline-shu"
+        >
           {`# USDC held by the vault on Ethereum
 cast call ${deployment?.usdcAddress ?? "<usdc>"} "balanceOf(address)(uint256)" ${ledgerEvmVault ?? deployment?.evmVaultAddress ?? "<vault>"} --rpc-url ${EVM_RPC_URL ?? "<rpc>"}
 

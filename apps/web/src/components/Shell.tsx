@@ -239,7 +239,7 @@ export function SiteHeader() {
     setMenu(false);
   }, [pathname]);
   return (
-    <header className="sticky top-0 z-40 border-b border-line/80 bg-paper/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-line/80 bg-paper/95 backdrop-blur-md">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2"
@@ -377,16 +377,16 @@ function RelayerStatus() {
   if (state.status === "loading") {
     return (
       <p className="flex items-center gap-2" role="status">
-        <CircleHelp aria-hidden className="h-4 w-4" /> Checking the relayer…
+        <CircleHelp aria-hidden className="h-4 w-4 shrink-0" /> Checking the relayer…
       </p>
     );
   }
   return (
-    <p className="flex items-center gap-2" role="status">
+    <p className="flex items-start gap-2" role="status">
       {relayerUp ? (
-        <BadgeCheck aria-hidden className="h-4 w-4 text-ok" />
+        <BadgeCheck aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-ok" />
       ) : (
-        <CircleAlert aria-hidden className="h-4 w-4 text-warn" />
+        <CircleAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
       )}{" "}
       {relayerUp
         ? "Relayer answering"

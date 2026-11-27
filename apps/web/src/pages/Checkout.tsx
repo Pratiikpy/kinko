@@ -120,6 +120,7 @@ export default function Checkout() {
         </Card>
       ) : (
         <EmptyState
+          main
           title="This checkout link is incomplete"
           action={
             <Link

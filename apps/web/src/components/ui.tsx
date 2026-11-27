@@ -374,14 +374,18 @@ export function EmptyState({
   title,
   children,
   action,
+  main = false,
 }: {
   title: string;
   children?: ReactNode;
   action?: ReactNode;
+  /** The state is all the page shows, so its title is the page's main heading. */
+  main?: boolean;
 }) {
+  const Title = main ? "h1" : "p";
   return (
     <div className="rounded-2xl border border-dashed border-line-strong px-6 py-10 text-center">
-      <p className="font-display text-lg text-ink">{title}</p>
+      <Title className="font-display text-lg text-ink">{title}</Title>
       {children ? (
         <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-ink-2">{children}</p>
       ) : null}

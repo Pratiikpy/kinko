@@ -35,30 +35,37 @@ export default function Privacy() {
         A privacy product that does not say precisely what it hides is asking to be taken on faith.
         This page is the full statement.
       </PageHeader>
-      <Card className="overflow-x-auto p-0 sm:p-0">
-        <table className="w-full min-w-[36rem] text-sm">
-          <thead>
-            <tr className="border-b border-line text-left">
-              <th scope="col" className="px-5 py-3 font-display text-base font-semibold text-ink">
-                Public
-              </th>
-              <th
-                scope="col"
-                className="px-5 py-3 font-display text-base font-semibold text-shu-ink"
-              >
-                Private
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {ROWS.map(([pub, priv]) => (
-              <tr key={pub}>
-                <td className="px-5 py-3 align-top text-ink-2">{pub}</td>
-                <td className="px-5 py-3 align-top text-ink-2">{priv}</td>
+      <Card className="p-0 sm:p-0">
+        <div
+          className="overflow-x-auto rounded-2xl focus-visible:outline-2 focus-visible:outline-shu"
+          role="region"
+          aria-label="What is public and what is private, scrolls sideways on small screens"
+          tabIndex={0}
+        >
+          <table className="w-full min-w-[36rem] text-sm">
+            <thead>
+              <tr className="border-b border-line text-left">
+                <th scope="col" className="px-5 py-3 font-display text-base font-semibold text-ink">
+                  Public
+                </th>
+                <th
+                  scope="col"
+                  className="px-5 py-3 font-display text-base font-semibold text-shu-ink"
+                >
+                  Private
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {ROWS.map(([pub, priv]) => (
+                <tr key={pub}>
+                  <td className="px-5 py-3 align-top text-ink-2">{pub}</td>
+                  <td className="px-5 py-3 align-top text-ink-2">{priv}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
       <Prose>
         <h2>Stated limits</h2>

@@ -126,12 +126,15 @@ body::before {
   box-sizing: border-box;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  color: inherit;
+/* In the base layer, so a component's own text colour (a primary button's white) wins over it. */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
 }
 
 /* Native selects keep a visible chevron after their default arrow is removed. */

@@ -16,6 +16,7 @@ const SECTIONS = [
   { id: "examine", label: "Examination" },
   { id: "recovery", label: "When something stops" },
   { id: "records", label: "Your records" },
+  { id: "words", label: "Words used here" },
 ];
 
 export default function Docs() {
@@ -193,6 +194,83 @@ export default function Docs() {
             browser keeps and cannot export. Make a backup in{" "}
             <Link to="/app/settings">Settings</Link> and store it like a password.
           </p>
+          <h2 id="words">Words used here</h2>
+          <dl>
+            <dt>KUSD</dt>
+            <dd>
+              Kinko's private dollar: a shielded token on Midnight, minted one for one against USDC
+              held in the vault and burned when you withdraw.
+            </dd>
+            <dt>USDC</dt>
+            <dd>
+              Circle's dollar stablecoin on Ethereum. On this test build it is Sepolia test USDC.
+            </dd>
+            <dt>Midnight</dt>
+            <dd>
+              A blockchain whose contracts prove facts in zero knowledge, so private inputs stay on
+              your device and only the proof reaches the chain.
+            </dd>
+            <dt>Shielded</dt>
+            <dd>
+              Private on Midnight. A shielded address receives private coins; the chain sees that a
+              valid transfer happened, not the amount or who sent it to whom.
+            </dd>
+            <dt>NIGHT and DUST</dt>
+            <dd>
+              Midnight's own token, and the resource that pays its network fees, which NIGHT
+              generates. NIGHT exists only unshielded, so a NIGHT-priced invoice is paid in KUSD at
+              a quoted rate.
+            </dd>
+            <dt>Vault</dt>
+            <dd>
+              The Midnight contract that holds the reserve through an Ethereum account it controls.
+              It mints KUSD on a deposit and burns it on a withdrawal, and counts both in public.
+            </dd>
+            <dt>Sig Network and Night Mode</dt>
+            <dd>
+              Sig Network's signers hold the vault's Ethereum key between them and sign only what
+              the vault contract asks for. Night Mode is this pairing of a Midnight contract with an
+              Ethereum account.
+            </dd>
+            <dt>Attestation</dt>
+            <dd>
+              The signers' signed statement, posted back to Midnight, that an Ethereum transfer
+              happened. The vault mints KUSD only against one.
+            </dd>
+            <dt>Relayer</dt>
+            <dd>
+              A service that carries a vault request through its public steps. It holds no key of
+              yours and cannot mint; anyone can run one.
+            </dd>
+            <dt>Preprod and Sepolia</dt>
+            <dd>Midnight's and Ethereum's public test networks. Nothing on them has real value.</dd>
+            <dt>1AM and NightKit</dt>
+            <dd>
+              1AM makes a Midnight wallet. NightKit, also by 1AM, opens a Midnight account from an
+              Ethereum or Solana wallet with one signature.
+            </dd>
+            <dt>Receipt</dt>
+            <dd>
+              A digest a payment leaves on chain. Alone it means nothing; with the secrets your
+              device kept, it proves that one payment to whoever you choose.
+            </dd>
+            <dt>Refund code</dt>
+            <dd>
+              What a payer gives a merchant to ask for a refund. It names one payment, and the
+              refund can only go back to the key fixed in that payment's receipt.
+            </dd>
+            <dt>Card birth</dt>
+            <dd>
+              Where the chain stood when a card was made. A card's link carries it, so the card
+              opens from a published copy of the chain's tree instead of reading its whole history.
+            </dd>
+            <dt>Examiner and keyholders</dt>
+            <dd>
+              An examiner is an accountant, auditor or regulator who may open the records a case
+              names. Three keyholders each hold part of the key; two must approve before anything
+              opens.
+            </dd>
+          </dl>
         </Prose>
         <Toc items={SECTIONS} />
       </div>

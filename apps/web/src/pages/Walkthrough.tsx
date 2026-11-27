@@ -115,8 +115,8 @@ export default function Walkthrough() {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader eyebrow="Guided tour" title="See the whole product in seven stops">
-        For judges and first-time visitors. Each stop says what to do and what to look for. Tick
-        them off as you go; the ticks stay in this browser.
+        For judges and first-time visitors. Each stop says what to do and what to look for. Press a
+        stop's number to tick it off; the ticks stay in this browser.
       </PageHeader>
       <p className="mb-6 text-sm text-ink-2" role="status">
         {done.length} of {STOPS.length} done.

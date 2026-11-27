@@ -114,7 +114,7 @@ function NewDeposit({
         </Button>
         {error ? <Notice tone="bad">{error}</Notice> : null}
         <p className="text-sm text-ink-3">
-          Vault on chain {deployment.evmChainId ?? evmChain.id}, USDC at{" "}
+          Vault on {evmChain.name} (chain {deployment.evmChainId ?? evmChain.id}), USDC at{" "}
           <span className="font-mono text-xs">{deployment.usdcAddress}</span>.
         </p>
       </form>

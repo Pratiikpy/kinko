@@ -58,12 +58,16 @@ function disagrees(
  * Which vault this build talks to. A build that pins the addresses uses them and only checks
  * the relayer's /health against them; one that pins nothing takes them from /health.
  */
+/** How soon a failed relayer check is repeated, instead of waiting for the next minute's poll. */
+const RETRY_AFTER_FAILURE_MS = 10_000;
+
 export function DeploymentProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DeploymentState>({ status: "loading" });
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let live = true;
+    let retry: number | undefined;
     const run = async () => {
       if (!relayer) {
         setState(
@@ -115,6 +119,10 @@ export function DeploymentProvider({ children }: { children: ReactNode }) {
         });
       } catch (e) {
         if (!live) return;
+        // One slow answer (a relayer busy syncing its wallet) should not read as an outage for a
+        // whole polling interval: ask again soon.
+        window.clearTimeout(retry);
+        retry = window.setTimeout(() => void run(), RETRY_AFTER_FAILURE_MS);
         const why = e instanceof RelayerError ? e.message : "The relayer did not answer.";
         setState(
           PINNED_VAULT
@@ -133,6 +141,7 @@ export function DeploymentProvider({ children }: { children: ReactNode }) {
     return () => {
       live = false;
       window.clearInterval(id);
+      window.clearTimeout(retry);
     };
   }, [tick]);
 

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
  */
 export function Prose({ children }: { children: ReactNode }) {
   return (
-    <div className="min-w-0 max-w-3xl text-base leading-relaxed text-ink-2 [&_a]:font-medium [&_a]:text-shu-ink [&_a:hover]:underline [&_code]:rounded [&_code]:bg-surface-2 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-ink [&_h2]:mb-3 [&_h2]:mt-12 [&_h2]:font-display [&_h2]:text-2xl [&_h2]:text-ink [&_h3]:mb-2 [&_h3]:mt-8 [&_h3]:font-display [&_h3]:text-lg [&_h3]:text-ink [&_li]:mt-1.5 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mt-4 [&_strong]:text-ink [&_ul]:list-disc [&_ul]:pl-6">
+    <div className="min-w-0 max-w-3xl text-base leading-relaxed text-ink-2 [&_a]:font-medium [&_a]:text-shu-ink [&_a:hover]:underline [&_code]:rounded [&_code]:bg-surface-2 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-ink [&_h2]:mb-3 [&_h2]:mt-12 [&_h2]:font-display [&_h2]:text-2xl [&_h2]:text-ink [&_h3]:mb-2 [&_h3]:mt-8 [&_h3]:font-display [&_h3]:text-lg [&_h3]:text-ink [&_li]:mt-1.5 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mt-4 [&_strong]:text-ink [&_ul]:list-disc [&_ul]:pl-6 [&_dl]:mt-4 [&_dt]:mt-5 [&_dt]:font-semibold [&_dt]:text-ink [&_dd]:mt-1">
       {children}
     </div>
   );
@@ -13,7 +13,10 @@ export function Prose({ children }: { children: ReactNode }) {
 
 export function Code({ children }: { children: string }) {
   return (
-    <pre className="mt-4 overflow-x-auto rounded-xl border border-line bg-surface-2 p-4 font-mono text-[13px] leading-relaxed text-ink">
+    <pre
+      tabIndex={0}
+      className="mt-4 overflow-x-auto rounded-xl border border-line bg-surface-2 p-4 font-mono text-[13px] leading-relaxed text-ink focus-visible:outline-2 focus-visible:outline-shu"
+    >
       {children}
     </pre>
   );

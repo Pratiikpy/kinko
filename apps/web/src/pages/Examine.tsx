@@ -53,6 +53,9 @@ type Role = "public" | "operator" | "examiner" | "keyholder" | "filer";
 
 const nowSeconds = () => BigInt(Math.floor(Date.now() / 1000));
 
+/** How many disclosure-log entries show before the rest is asked for. */
+const LOG_PREVIEW = 10;
+
 function useLedger(tick: number) {
   const { account } = useAccount();
   return useAsync(
@@ -67,6 +70,7 @@ function useLedger(tick: number) {
 }
 
 function PublicView({ ledger }: { ledger: NonNullable<ReturnType<typeof useLedger>["value"]> }) {
+  const [wholeLog, setWholeLog] = useState(false);
   const check = verifyDeployment(ledger);
   const log = readLog(ledger).reverse();
   const cases = listCases(ledger);
@@ -181,7 +185,7 @@ function PublicView({ ledger }: { ledger: NonNullable<ReturnType<typeof useLedge
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {log.map((e, i) => (
+                  {(wholeLog ? log : log.slice(0, LOG_PREVIEW)).map((e, i) => (
                     <tr key={`${String(e.at)}-${String(i)}`}>
                       <td className="tabular py-2.5 pr-3 text-ink-2">
                         {new Date(Number(e.at) * 1000).toLocaleString()}
@@ -205,6 +209,20 @@ function PublicView({ ledger }: { ledger: NonNullable<ReturnType<typeof useLedge
                 </tbody>
               </table>
             </div>
+            {log.length > LOG_PREVIEW ? (
+              <Button
+                variant="ghost"
+                className="mt-3"
+                aria-expanded={wholeLog}
+                onClick={() => {
+                  setWholeLog((w) => !w);
+                }}
+              >
+                {wholeLog
+                  ? `Show the latest ${String(LOG_PREVIEW)}`
+                  : `Show all ${String(log.length)} entries`}
+              </Button>
+            ) : null}
           </>
         )}
       </Card>

@@ -134,7 +134,9 @@ test("verify refuses a forged proof, and checkout explains an incomplete link", 
 }) => {
   void problems;
   await page.goto("/verify#bm90LWEtcHJvb2Y");
-  await expect(page.getByText("That is not a Kinko receipt proof.")).toBeVisible();
+  await expect(
+    page.getByText("That is not a receipt proof this version of Kinko can read."),
+  ).toBeVisible();
   await page.goto("/checkout#garbage");
   await expect(page.getByText("This checkout link is incomplete")).toBeVisible();
 });

@@ -327,7 +327,11 @@ export default function Batch() {
                 One payment per line: a @tag or a Midnight shielded address, then the amount in
                 dollars, then an optional note. A header row is optional. Up to 200 lines.
               </p>
-              <pre className="mt-3 overflow-x-auto rounded-xl bg-surface-2 p-3 font-mono text-xs text-ink">
+              <pre
+                tabIndex={0}
+                aria-label="Example batch file"
+                className="mt-3 overflow-x-auto rounded-xl bg-surface-2 p-3 font-mono text-xs text-ink focus-visible:outline-2 focus-visible:outline-shu"
+              >
                 {BATCH_TEMPLATE}
               </pre>
             </Card>
