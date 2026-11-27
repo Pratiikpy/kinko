@@ -121,7 +121,11 @@ export default function Privacy() {
           relayer, backend, fee sponsor, card snapshot service, proof server and NightKit vault
           named in <Link to="/app/settings">Settings</Link>, and to your own wallet. None is given a
           key; the snapshot service sees when a card is made and opened, and the relayer sees the
-          addresses it carries.
+          addresses it carries. The one exception is proving: a Midnight wallet proves on your own
+          device, but a gift or PIN card, which has no wallet, sends the private inputs of each
+          payment it makes to the proof server named in Settings. On the hosted site that is ours.
+          To keep a card's proofs on your machine, run the app yourself with a local proof server,
+          as the README shows.
         </p>
       </Prose>
     </div>

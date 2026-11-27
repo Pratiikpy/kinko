@@ -42,7 +42,9 @@ Built for the [Midnight Buildathon](https://app.akindo.io/) on Midnight's Night 
 
 ## How judges can test it
 
-There is no hosted public build yet (see [Limits](#limits-stated-plainly)); the app is served from the developer's machine. What you can verify without our server:
+**Open it at [kinko.knole.me](https://kinko.knole.me).** It is the preprod build, with its backend, relayer, fee sponsor, snapshot service and proof server behind it. The Backing, Examine, Verify and Docs pages and the guided tour need no wallet; a gift or PIN card pays there with no wallet at all; everything else needs a Midnight wallet such as 1AM on preprod. The site is served from the developer's machine through a Cloudflare tunnel, so it answers while that machine is on (see [Limits](#limits-stated-plainly)).
+
+What you can verify without our server:
 
 **1. On chain, with no account.** The deployed contracts are listed [below](#live-contracts-on-midnight-preprod) with their deploy transactions. The reserve is checkable from a terminal:
 
@@ -277,7 +279,9 @@ What the contract tests are built to catch, beyond happy paths: a refusal for ev
 - **Test networks, experimental, not audited by a human.** Nothing here is on a mainnet. Do not use it with funds you cannot afford to lose.
 - **Trust in Sig Network.** A threshold of its signers holds the vault's Ethereum key. If enough of them colluded they could move the USDC; the Backing page would show it. USDC is itself issued by Circle.
 - **The edges are public.** Each deposit and withdrawal is visible on Ethereum (the address and the amount). Timing and network metadata can link them. The snapshot service sees when a card is made and opened, with the caller's address.
-- **No hosted build.** The preprod app is served from the developer's machine beside its backend, relayer, sponsor and snapshot service. A public deployment also needs a proxy for the Blockfrost project ID, which the app currently carries in the browser.
+- **Hosted from one machine.** [kinko.knole.me](https://kinko.knole.me) and its services run on the developer's machine behind a Cloudflare tunnel, so the site is down whenever that machine is. The Midnight indexer is reached through the site's own relay, which keeps the Blockfrost key off the page; the Backing page says so, and the commands on it check the figure without the site.
+- **Ethereum sign-in is not on preprod.** NightKit's vault (0.1.3) opens accounts only on stagenet and local networks, so the preprod build offers Midnight wallets only and says why. Opening an account from MetaMask works on the local stack.
+- **A card proves on our proof server.** A gift or PIN card has no wallet to prove with, so on the hosted site the private inputs of each card payment go to Kinko's proof server. A Midnight wallet proves on the user's own device. Running the app locally keeps a card's proofs local too.
 - **Stagenet is gone.** Sig retired its stagenet MPC on 11 November 2026; no deposit there can be signed. The flows run on preprod.
 - **NIGHT is unshielded.** There is no shielded NIGHT coin, so a NIGHT-priced invoice is paid in KUSD at an oracle's rate and refunded in KUSD.
 - **The batch circuit is not used by the app.** The app pays a batch as plain transfers. The circuit is tested in the simulator and was run live from Node.
@@ -386,11 +390,32 @@ Two things a public deployment needs that the local stack hides:
 
 The live suite runs against preprod the same way: `KINKO_ENV_FILE=.env.preprod yarn workspace @kinko/web e2e:live`, with the backend, relayer, sponsor and snapshot service started from their preprod profiles. It builds the app for preprod and serves it on port 4174. Steps wait for real blocks and finality, so a flow takes minutes: deposit and withdraw wait on the MPC, up to half an hour. The PIN card's holder is a Firefox with no wallet, which pays by uploading the circuit's 90 MB proving key to the proof server, a request that crashes Playwright's own Chromium connection. Each test wallet's cache is written to the path its `<ROLE>_WALLET_CACHE_PATH` names, so a rerun starts synced. A flow that needs more KUSD than its test wallet holds is skipped and says so, rather than passing. Setting `KINKO_LIVE_FULL_REPLAY=1` makes the tests read card balances by replaying the whole chain, to check them against the snapshot start.
 
+### Host it
+
+The hosted site is the preprod build served by one small Node server, [`apps/web/scripts/serve-hosted.ts`](apps/web/scripts/serve-hosted.ts): the static app, its single-page routes, the proving keys under `/zk` (over a gigabyte, more than a static host holds), and a pass-through to the Midnight indexer and node that keeps the provider's key on the server ([`chain-proxy.ts`](apps/web/scripts/chain-proxy.ts), rate-limited per client). Every response carries `Cache-Control: no-transform`, so a CDN in front cannot inject scripts into the pages.
+
+```bash
+# apps/web/.env.hosted.local: the preprod values, with every service on a public HTTPS address and
+#   VITE_INDEXER_URL=https://<site>/chain/indexer
+#   VITE_INDEXER_WS_URL=wss://<site>/chain/indexer/ws
+#   VITE_NODE_URL=https://<site>/chain/node
+(cd apps/web && npx vite build --mode hosted --outDir dist/hosted)
+
+# The keyed upstreams stay on the server
+CHAIN_INDEXER_UPSTREAM='https://midnight-preprod.blockfrost.io/api/v0?project_id=…' \
+CHAIN_INDEXER_WS_UPSTREAM='wss://midnight-preprod.blockfrost.io/api/v0/ws?project_id=…' \
+CHAIN_NODE_UPSTREAM='https://rpc.midnight-preprod.blockfrost.io/?project_id=…' \
+node --experimental-strip-types apps/web/scripts/serve-hosted.ts dist/hosted    # port 4180
+```
+
+Put TLS in front of it and of the backend, relayer, sponsor, snapshot service and proof server, and add the site's origin to `RELAYER_CORS_ORIGINS`, `SPONSOR_ALLOWED_ORIGINS` and `KINKO_CORS_ORIGINS`; behind a proxy, also set `RELAYER_TRUST_PROXY=true`, `KINKO_TRUST_PROXY=true`, `SPONSOR_TRUSTED_PROXIES` and `SNAPSHOTS_TRUST_PROXY_HOPS=1`, so rate limits count visitors rather than the proxy. `KINKO_LIVE_BASE_URL=https://<site> yarn workspace @kinko/web e2e:live` runs the live suite against the hosted site instead of a local build.
+
 ## Roadmap
 
 | Next | Why |
 |---|---|
-| A hosted public build with a proxy for the Blockfrost key | Judges and users could open it without running a stack |
+| The hosted build on a server rather than the developer's machine | The site would stay up when that machine is off |
+| Ethereum sign-in on preprod, once NightKit's vault serves it | MetaMask holders could open an account there without a Midnight wallet |
 | A human audit of the pay and vault contracts | The reviews so far were by AI agents |
 | Pay batches through the batch circuit | The contract already issues receipts for a batch; the app uses plain transfers |
 | Tell in continuous integration | The privacy review is run by hand today |

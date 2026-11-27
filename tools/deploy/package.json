@@ -16,7 +16,8 @@
     "smoke:batch": "tsx src/smoke-batch.ts",
     "smoke:card": "tsx src/smoke-card.ts",
     "fund-roles": "tsx src/fund-roles.ts",
-    "sync-wallets": "tsx src/sync-wallets.ts"
+    "sync-wallets": "tsx src/sync-wallets.ts",
+    "move-kusd": "tsx src/move-kusd.ts"
   },
   "dependencies": {
     "@kinko/card": "workspace:*",

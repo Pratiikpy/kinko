@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { Seal } from "../components/Logo.tsx";
 import { ButtonLink, Skeleton } from "../components/ui.tsx";
 import { useAsync } from "../hooks/useAsync.ts";
+import { VAULT_SIGN_IN } from "../lib/config.ts";
 import { formatAmount } from "../lib/format.ts";
 import { coverageBps, kusdInCirculation, relayer } from "../lib/relayer.ts";
 
@@ -274,10 +275,15 @@ export default function Landing() {
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div className="flex flex-col items-start justify-between gap-6 rounded-3xl bg-ink px-6 py-10 text-paper sm:flex-row sm:items-center sm:px-10">
           <div>
-            <h2 className="font-display text-3xl">Open an account with the wallet you have.</h2>
+            <h2 className="font-display text-3xl">
+              {VAULT_SIGN_IN
+                ? "Open an account with the wallet you have."
+                : "Open an account with your Midnight wallet."}
+            </h2>
             <p className="mt-2 max-w-xl text-paper/80">
-              MetaMask, Phantom, Coinbase Wallet or a Midnight wallet. One signature opens your
-              private account.
+              {VAULT_SIGN_IN
+                ? "MetaMask, Phantom, Coinbase Wallet or a Midnight wallet. One signature opens your private account."
+                : "1AM or Lace. Connect once and your private account is ready, with its keys still in your wallet."}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { ButtonLink, Card, PageHeader } from "../components/ui.tsx";
+import { VAULT_SIGN_IN } from "../lib/config.ts";
 import { storage } from "../lib/storage.ts";
 
 interface Stop {
@@ -29,13 +30,25 @@ const STOPS: Stop[] = [
   },
   {
     id: "connect",
-    title: "Open an account with an Ethereum wallet",
-    what: "Press Connect and choose MetaMask. One signature opens a Midnight account inside NightKit's vault, on a separate origin this page cannot read.",
-    lookFor: [
-      "Your shielded address on the account home",
-      '"Opened with MetaMask" beside your wallet name',
-      'Your balance labelled "only you can see it"',
-    ],
+    ...(VAULT_SIGN_IN
+      ? {
+          title: "Open an account with an Ethereum wallet",
+          what: "Press Connect and choose MetaMask. One signature opens a Midnight account inside NightKit's vault, on a separate origin this page cannot read.",
+          lookFor: [
+            "Your shielded address on the account home",
+            '"Opened with MetaMask" beside your wallet name',
+            'Your balance labelled "only you can see it"',
+          ],
+        }
+      : {
+          title: "Open an account with a Midnight wallet",
+          what: "Press Connect and choose 1AM or Lace. The app reads your addresses from the wallet; your keys never leave it.",
+          lookFor: [
+            "Your shielded address on the account home",
+            "Your wallet's name beside the account",
+            'Your balance labelled "only you can see it"',
+          ],
+        }),
     to: "/app",
     cta: "Open the account",
   },

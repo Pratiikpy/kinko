@@ -67,6 +67,13 @@ function toRead<T>(
   return { status: "loading" };
 }
 
+/**
+ * Whether the Midnight indexer is reached through this site's own relay, which keeps the
+ * provider's key off the page. The figure is then only as independent as that relay.
+ */
+const INDEXER_RELAYED =
+  typeof window !== "undefined" && PUBLIC_INDEXER?.http.startsWith(window.location.origin) === true;
+
 export default function Backing() {
   const { state } = useDeployment();
   const deployment = state.status === "ready" ? state.deployment : null;
@@ -234,7 +241,9 @@ export default function Backing() {
                 : verdict === "unknown"
                   ? "One of the two figures could not be read. Nothing is assumed in its place."
                   : independent
-                    ? "Both figures were read by this browser directly from the two chains."
+                    ? INDEXER_RELAYED
+                      ? "Both figures were read by this browser: Ethereum's from a public node, Midnight's through this site's relay to a Midnight indexer. To rule the site out, run the commands below."
+                      : "Both figures were read by this browser directly from the two chains."
                     : "At least one figure comes from the relayer's report, because this browser could not read that chain directly."}
             </p>
           </div>

@@ -28,8 +28,22 @@ const urlOr = (value: string | undefined, fallback: string | undefined): string 
 /** The Midnight network this build talks to. The wallet must be on the same one. */
 export const NETWORK_ID = clean(env.VITE_NETWORK_ID) ?? "undeployed";
 
-/** Where the NightKit vault is served. It must be a different origin from the app. */
-export const NIGHTKIT_VAULT_URL = url(env.VITE_NIGHTKIT_VAULT_URL) ?? "http://localhost:5184";
+/**
+ * The networks NightKit's vault (nightkit-vault 0.1.3) opens accounts on. On any other network it
+ * refuses to connect, so this build offers only wallets that speak Midnight themselves there.
+ */
+const VAULT_NETWORKS: ReadonlySet<string> = new Set(["undeployed", "stagenet"]);
+
+/** Whether an account can be opened from an Ethereum or Solana wallet on this network. */
+export const VAULT_SIGN_IN = VAULT_NETWORKS.has(NETWORK_ID);
+
+/**
+ * Where the NightKit vault is served. It must be a different origin from the app. Unset on a
+ * network the vault does not serve, so NightKit never offers a sign-in that would fail.
+ */
+export const NIGHTKIT_VAULT_URL = VAULT_SIGN_IN
+  ? (url(env.VITE_NIGHTKIT_VAULT_URL) ?? "http://localhost:5184")
+  : undefined;
 
 /** The relayer that carries vault requests through their permissionless steps. */
 export const RELAYER_URL = urlOr(

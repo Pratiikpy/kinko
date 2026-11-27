@@ -14,7 +14,11 @@ import { DeploymentProvider } from "./state/deployment.tsx";
 import { EvmProviders } from "./state/evm.tsx";
 import { ThemeProvider, useTheme } from "./state/theme.tsx";
 
-const nightkitConfig = { networkId: NETWORK_ID, vaultUrl: NIGHTKIT_VAULT_URL, appName: "Kinko" };
+const nightkitConfig = {
+  networkId: NETWORK_ID,
+  ...(NIGHTKIT_VAULT_URL ? { vaultUrl: NIGHTKIT_VAULT_URL } : {}),
+  appName: "Kinko",
+};
 
 function Midnight({ children }: { children: ReactNode }) {
   const { theme } = useTheme();

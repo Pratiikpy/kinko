@@ -13,6 +13,7 @@ import {
   Segmented,
 } from "../../components/ui.tsx";
 import {
+  BACKEND_URL,
   CONTRACT_ENV,
   CONTRACTS,
   EVM_CHAIN_ID,
@@ -21,8 +22,11 @@ import {
   NETWORK_ID,
   NIGHTKIT_VAULT_URL,
   PIN_STATUS,
+  PROOF_SERVER_URL,
   PUBLIC_INDEXER,
   RELAYER_URL,
+  SNAPSHOTS_URL,
+  SPONSOR_URL,
   ZK_BASE_URL,
 } from "../../lib/config.ts";
 import { isRecordsDoc } from "../../lib/records.ts";
@@ -142,12 +146,21 @@ function Backup() {
 const hideKey = (url: string | undefined): string | undefined =>
   url?.replace(/([?&](?:project_id|apikey|api_key|key|token)=)[^&#]*/gi, "$1…");
 
-function Row({ label, value }: { label: string; value: string | undefined }) {
+function Row({
+  label,
+  value,
+  empty = "Not set",
+}: {
+  label: string;
+  value: string | undefined;
+  /** What an unset value means here. */
+  empty?: string;
+}) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 py-2.5">
       <dt className="text-sm text-ink-2">{label}</dt>
       <dd className="min-w-0">
-        {value ? <Copyable value={value} /> : <span className="text-sm text-ink-3">Not set</span>}
+        {value ? <Copyable value={value} /> : <span className="text-sm text-ink-3">{empty}</span>}
       </dd>
     </div>
   );
@@ -228,8 +241,16 @@ export default function Settings() {
             <Row label="Relayer" value={RELAYER_URL} />
             <Row label="Public indexer" value={hideKey(PUBLIC_INDEXER?.http)} />
             <Row label="Ethereum RPC" value={EVM_RPC_URL} />
-            <Row label="NightKit vault" value={NIGHTKIT_VAULT_URL} />
+            <Row
+              label="NightKit vault"
+              value={NIGHTKIT_VAULT_URL}
+              empty={`Not served on ${NETWORK_ID}: Midnight wallets only`}
+            />
             <Row label="Proving keys" value={ZK_BASE_URL} />
+            <Row label="Proof server for cards" value={PROOF_SERVER_URL} />
+            <Row label="Fee sponsor" value={SPONSOR_URL} />
+            <Row label="Card snapshots" value={SNAPSHOTS_URL} />
+            <Row label="Backend" value={BACKEND_URL} />
             <div className="flex justify-between py-2.5 text-sm">
               <dt className="text-ink-2">Vault pinned in this build</dt>
               <dd className="text-ink">

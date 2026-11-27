@@ -95,6 +95,22 @@ function stateOf(shielded: FacadeState["shielded"]): CardState {
 }
 
 /**
+ * A sub-wallet configuration with no node named, neither its own nor the submission relay it
+ * would otherwise borrow, so the sub-wallet never connects to one.
+ *
+ * @param cfg - The configuration the facade built.
+ * @returns The same configuration without `relayURL` or `nodeClientConnection`.
+ */
+function withoutNode<T extends { relayURL?: unknown; nodeClientConnection?: unknown }>(
+  cfg: T,
+): Omit<T, "relayURL" | "nodeClientConnection"> {
+  const copy: Partial<T> = { ...cfg };
+  delete copy.relayURL;
+  delete copy.nodeClientConnection;
+  return copy as Omit<T, "relayURL" | "nodeClientConnection">;
+}
+
+/**
  * A sub-wallet that is never started, so it never syncs. Every other call reaches the real
  * wallet, which the facade consults only for the token kind it holds, and a card only ever
  * balances shielded tokens. Its state reports the protocol version of the shielded wallet,
@@ -230,8 +246,13 @@ export class CardWallet {
             : ShieldedWallet(cfg).restore(cardSnapshot(snapshot, addresses, network.networkId));
         return leader.wallet;
       },
+      // A card holds only shielded coins, so its unshielded wallet is given no node: with one, it
+      // opens a node connection only to check liveness, which a card never needs, and which a page
+      // leaving mid-connect turns into console errors.
       unshielded: (cfg) =>
-        UnshieldedWallet(cfg).startWithPublicKey(PublicKey.fromKeyStore(keys.unshieldedKeystore)),
+        UnshieldedWallet(withoutNode(cfg)).startWithPublicKey(
+          PublicKey.fromKeyStore(keys.unshieldedKeystore),
+        ),
       dust: async (cfg) =>
         idle(
           await DustWallet(cfg).startWithSeed(

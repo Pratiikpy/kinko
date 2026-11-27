@@ -16,6 +16,9 @@ const NETWORK =
 const LOCAL = NETWORK === "undeployed";
 // The stagenet services listen on their own ports, so both stacks can run at once.
 const PORT = LOCAL ? "5191" : "4174";
+// KINKO_LIVE_BASE_URL runs the suite against a deployment already hosted elsewhere, whose
+// services must be on NETWORK_ID, instead of a fresh local build.
+const HOSTED = process.env.KINKO_LIVE_BASE_URL?.replace(/\/+$/, "");
 
 // The live suite: the real app against a real chain (the local stack, or a deployed network
 // with the real Signature Network MPC and Sepolia), Kinko's deployed contracts, the relayer,
@@ -30,16 +33,18 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    baseURL: `http://127.0.0.1:${PORT}`,
+    baseURL: HOSTED ?? `http://127.0.0.1:${PORT}`,
     browserName: "chromium",
     viewport: { width: 1440, height: 900 },
     trace: "retain-on-failure",
   },
-  webServer: {
-    command: `npx vite build --mode ${NETWORK} --outDir dist/live-${NETWORK} && npx vite preview --mode ${NETWORK} --outDir dist/live-${NETWORK} --port ${PORT} --strictPort --host 127.0.0.1`,
-    url: `http://127.0.0.1:${PORT}`,
-    // Always a fresh build, so a run never tests a stale bundle.
-    reuseExistingServer: false,
-    timeout: 300_000,
-  },
+  webServer: HOSTED
+    ? undefined
+    : {
+        command: `npx vite build --mode ${NETWORK} --outDir dist/live-${NETWORK} && npx vite preview --mode ${NETWORK} --outDir dist/live-${NETWORK} --port ${PORT} --strictPort --host 127.0.0.1`,
+        url: `http://127.0.0.1:${PORT}`,
+        // Always a fresh build, so a run never tests a stale bundle.
+        reuseExistingServer: false,
+        timeout: 300_000,
+      },
 });

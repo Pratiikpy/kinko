@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 
 import { Prose, Toc } from "../components/Prose.tsx";
 import { PageHeader } from "../components/ui.tsx";
+import { NETWORK_ID, VAULT_SIGN_IN } from "../lib/config.ts";
 
 const SECTIONS = [
   { id: "start", label: "Open an account" },
@@ -29,11 +30,10 @@ export default function Docs() {
         <Prose>
           <h2 id="start">Open an account</h2>
           <p>
-            Press <strong>Connect</strong>. Choose a Midnight wallet (such as 1AM) if you have one,
-            or choose MetaMask, Phantom, Coinbase Wallet or another Ethereum or Solana wallet. With
-            the second kind, NightKit asks your wallet for one signature and opens a Midnight
-            account from it, inside a vault served from a separate site that this page cannot read.
-            Signing in again with the same wallet opens the same account.
+            Press <strong>Connect</strong> and choose a Midnight wallet, such as 1AM or Lace.{" "}
+            {VAULT_SIGN_IN
+              ? "You can also choose MetaMask, Phantom, Coinbase Wallet or another Ethereum or Solana wallet: NightKit asks it for one signature and opens a Midnight account from it, inside a vault served from a separate site that this page cannot read. Signing in again with the same wallet opens the same account."
+              : `Opening an account from an Ethereum or Solana wallet goes through NightKit's vault, which does not serve ${NETWORK_ID} yet, so this build offers Midnight wallets only.`}
           </p>
           <p>
             A new account syncs with the network the first time. Addresses work immediately;

@@ -3,7 +3,7 @@ import { ConnectButton } from "nightkit-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-import { CONTRACT_ENV, CONTRACTS, type KinkoContract } from "../lib/config.ts";
+import { CONTRACT_ENV, CONTRACTS, type KinkoContract, VAULT_SIGN_IN } from "../lib/config.ts";
 import { useAccount } from "../state/account.tsx";
 import { useDeployment } from "../state/deployment.tsx";
 import { Card, Notice } from "./ui.tsx";
@@ -20,8 +20,9 @@ export function ConnectGate({ children, what }: { children: ReactNode; what: str
         <Card className="text-center">
           <p className="font-display text-xl text-ink">Connect to {what}</p>
           <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-ink-2">
-            Use a Midnight wallet, or open a private account from MetaMask, Phantom or Coinbase
-            Wallet with one signature. Your keys stay in a vault this page cannot read.
+            {VAULT_SIGN_IN
+              ? "Use a Midnight wallet, or open a private account from MetaMask, Phantom or Coinbase Wallet with one signature. Your keys stay in a vault this page cannot read."
+              : "Use a Midnight wallet such as 1AM or Lace. Your keys stay in your wallet; this page only asks it to sign."}
           </p>
           <div className="mt-5 flex justify-center">
             <ConnectButton label="Connect wallet" />
