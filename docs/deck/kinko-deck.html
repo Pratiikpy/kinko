@@ -1,0 +1,1239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Kinko: private dollars, counted in public</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
+    <style>
+      :root {
+        --paper: #f7f3ec;
+        --surface: #fffdf9;
+        --surface2: #f2ece2;
+        --line: #e3dacd;
+        --ink: #1b1815;
+        --ink2: #4c453e;
+        --ink3: #675e54;
+        --shu: #c23a22;
+        --shuink: #a52f19;
+        --ok: #2c6a4c;
+        --oksoft: #e1efe6;
+        --night: #1b1815;
+        --nightcard: #2a2521;
+        --cream: #fbf5ec;
+        --creamsoft: #d9cfc2;
+        --coral: #f0907e;
+      }
+
+      body {
+        font-family: "Inter", Arial, sans-serif;
+        color: var(--ink);
+      }
+
+      section {
+        counter-increment: page;
+        box-sizing: border-box;
+        padding: 128px 128px 160px;
+        background: var(--paper);
+        display: flex;
+        flex-direction: column;
+      }
+
+      section.dark {
+        background: var(--night);
+        color: var(--cream);
+      }
+
+      section.accent {
+        background: var(--shu);
+        color: var(--cream);
+      }
+
+      /* Type scale: 112 / 64 / 40 / 32 / 24 */
+      h1 {
+        font-family: "Shippori Mincho", Georgia, serif;
+        font-size: 112px;
+        font-weight: 700;
+        line-height: 1.06;
+        color: var(--ink);
+      }
+
+      h2 {
+        font-family: "Shippori Mincho", Georgia, serif;
+        font-size: 64px;
+        font-weight: 600;
+        line-height: 1.12;
+        color: var(--ink);
+        margin-top: 18px;
+      }
+
+      h3 {
+        font-family: "Shippori Mincho", Georgia, serif;
+        font-size: 40px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: var(--ink);
+      }
+
+      p {
+        font-size: 32px;
+        line-height: 1.45;
+        color: var(--ink2);
+      }
+
+      section.dark h1,
+      section.dark h2,
+      section.dark h3,
+      section.accent h1,
+      section.accent h2,
+      section.accent h3 {
+        color: var(--cream);
+      }
+
+      section.dark p {
+        color: var(--creamsoft);
+      }
+
+      section.accent p {
+        color: var(--cream);
+      }
+
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .eyebrow .rule {
+        width: 48px;
+        height: 4px;
+        background: var(--shu);
+      }
+
+      .eyebrow p {
+        font-size: 24px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--shuink);
+        line-height: 1.2;
+      }
+
+      section.dark .eyebrow .rule {
+        background: var(--coral);
+      }
+
+      section.dark .eyebrow p {
+        color: var(--coral);
+      }
+
+      section.accent .eyebrow .rule {
+        background: var(--cream);
+      }
+
+      section.accent .eyebrow p {
+        color: var(--cream);
+      }
+
+      .lead {
+        font-size: 32px;
+        line-height: 1.45;
+        color: var(--ink2);
+      }
+
+      .small {
+        font-size: 24px;
+        line-height: 1.45;
+        color: var(--ink3);
+      }
+
+      .mono {
+        font-family: "JetBrains Mono", "Courier New", monospace;
+      }
+
+      .foot {
+        position: absolute;
+        left: 128px;
+        bottom: 56px;
+        width: 1664px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .foot p {
+        font-size: 24px;
+        color: var(--ink3);
+        line-height: 1.2;
+      }
+
+      .foot .pg::after {
+        content: counter(page);
+      }
+
+      section.dark .foot p {
+        color: var(--creamsoft);
+      }
+
+      .card {
+        box-sizing: border-box;
+        background: var(--surface);
+        border: 2px solid var(--line);
+        border-radius: 28px;
+        padding: 36px 40px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .card .body {
+        font-size: 26px;
+        line-height: 1.45;
+        color: var(--ink2);
+      }
+
+      .tag {
+        align-self: flex-start;
+        font-size: 24px;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        line-height: 1.2;
+        padding: 8px 16px;
+        border-radius: 999px;
+        background: var(--surface2);
+        color: var(--ink2);
+      }
+
+      .tag.mid {
+        background: var(--ink);
+        color: var(--cream);
+      }
+
+      .pill {
+        font-size: 24px;
+        font-weight: 600;
+        line-height: 1.2;
+        padding: 14px 24px;
+        border-radius: 999px;
+        border: 2px solid var(--line);
+        background: var(--surface);
+        color: var(--ink2);
+      }
+
+      .pill .em {
+        color: var(--shuink);
+        font-weight: 700;
+      }
+
+      .okpill {
+        align-self: flex-start;
+        font-size: 26px;
+        font-weight: 600;
+        line-height: 1.2;
+        padding: 14px 22px;
+        border-radius: 16px;
+        background: var(--oksoft);
+        color: var(--ok);
+      }
+
+      .shot {
+        box-sizing: border-box;
+        border: 2px solid var(--line);
+        border-radius: 24px;
+        background: var(--surface);
+        object-fit: contain;
+      }
+
+      .big {
+        font-family: "Shippori Mincho", Georgia, serif;
+        font-size: 112px;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--ink);
+      }
+
+      .big.shu {
+        color: var(--shuink);
+      }
+
+      .label {
+        font-size: 26px;
+        line-height: 1.4;
+        color: var(--ink2);
+      }
+
+      table.t {
+        width: 100%;
+        font-size: 26px;
+        color: var(--ink2);
+      }
+
+      table.t th {
+        font-weight: 600;
+        color: var(--ink);
+        text-align: left;
+      }
+
+      table.t td {
+        text-align: left;
+      }
+
+      /* Arrival: content rises in, staged. The finished look is the plain rule. */
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(24px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .in {
+        animation: rise 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+        animation-delay: calc(var(--i, 0) * 110ms);
+      }
+
+      * {
+        margin: 0;
+      }
+      html,
+      body {
+        background: #1b1815;
+      }
+      body > section {
+        width: 1920px !important;
+        height: 1080px !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+        position: relative;
+        isolation: isolate;
+        break-after: page;
+        margin: 0 auto;
+      }
+      aside {
+        display: none !important;
+      }
+      h1 {
+        font-size: 96px;
+        font-weight: 600;
+      }
+      h2 {
+        font-size: 64px;
+        font-weight: 600;
+      }
+      h3 {
+        font-size: 44px;
+        font-weight: 600;
+      }
+      p,
+      li,
+      h1,
+      h2,
+      h3,
+      td,
+      th {
+        overflow-wrap: break-word;
+        text-wrap: pretty;
+      }
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        border: solid #0003;
+        border-width: 2px 0 0 2px;
+      }
+      th,
+      td {
+        padding: 0.35em 0.6em;
+        text-align: left;
+        border: solid #0003;
+        border-width: 0 2px 2px 0;
+      }
+      x-shape,
+      x-icon,
+      x-embed {
+        display: block;
+      }
+      .in {
+        animation: none !important;
+        opacity: 1 !important;
+        transform: none !important;
+      }
+      @page {
+        size: 1920px 1080px;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <section id="cover" class="cover" data-transition="fade" style="padding: 120px 128px 112px">
+      <div
+        style="
+          display: flex;
+          flex-direction: row;
+          justify-content: space-between;
+          align-items: center;
+          flex: 1;
+          gap: 72px;
+        "
+      >
+        <div style="display: flex; flex-direction: column; gap: 36px; width: 940px">
+          <div
+            class="in"
+            style="--i: 0; display: flex; flex-direction: row; align-items: center; gap: 32px"
+          >
+            <svg
+              aria-label="Kinko's seal: the character for gold, in white on vermilion"
+              viewBox="0 0 64 64"
+              width="64"
+              height="64"
+              style="width: 128px; height: 128px"
+            >
+              <rect x="2" y="2" width="60" height="60" rx="13" fill="#c23a22" />
+              <rect
+                x="6.5"
+                y="6.5"
+                width="51"
+                height="51"
+                rx="9"
+                fill="none"
+                stroke="#fbf5ec"
+                stroke-width="1.6"
+              />
+              <g
+                fill="none"
+                stroke="#fbf5ec"
+                stroke-width="4.2"
+                stroke-linecap="square"
+                stroke-linejoin="miter"
+              >
+                <path d="M14.5 27 L32 12.5 L49.5 27" />
+                <path d="M23 30.5 H41" />
+                <path d="M18 39 H46" />
+                <path d="M32 30.5 V51" />
+                <path d="M21 42.5 L23.5 46" />
+                <path d="M43 42.5 L40.5 46" />
+                <path d="M14.5 51.5 H49.5" />
+              </g>
+            </svg>
+            <h1>Kinko <span style="color: #675e54; font-weight: 500">金庫</span></h1>
+          </div>
+          <h2 class="in" style="--i: 1; font-size: 64px; margin-top: 0">
+            A private dollar account on Midnight,
+            <span style="color: #c23a22">backed one to one</span> by USDC anyone can count.
+          </h2>
+          <p class="in" style="--i: 2">
+            Pay, invoice, refund and gift in private. Check the reserve in public, from any browser.
+          </p>
+        </div>
+        <div class="card in" style="--i: 3; width: 640px; padding: 44px 48px; gap: 18px">
+          <p
+            class="small"
+            style="font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase"
+          >
+            Backing, read live
+          </p>
+          <p class="label">USDC held by the vault, Ethereum Sepolia</p>
+          <p class="big" style="font-size: 88px">$107.00</p>
+          <hr style="border-top: 2px solid #e3dacd" />
+          <p class="label">KUSD in circulation, Midnight preprod</p>
+          <p class="big" style="font-size: 88px">$87.00</p>
+          <p class="okpill">Fully backed: 122.98% covered</p>
+          <p class="small">Read from both chains on 28 November 2026.</p>
+        </div>
+      </div>
+      <div
+        class="in"
+        style="--i: 4; display: flex; flex-direction: row; gap: 16px; align-items: center"
+      >
+        <p class="pill">Live at <span class="em">kinko.knole.me</span></p>
+        <p class="pill"><span class="em">5</span> Compact contracts on preprod</p>
+        <p class="pill"><span class="em">12 of 12</span> flows pass live</p>
+        <p class="pill"><span class="em">2,425</span> tests</p>
+        <p class="pill">Apache-2.0</p>
+      </div>
+      <aside>
+        Kinko means “safe” in Japanese. It is a private dollar account on Midnight: you put USDC
+        into a vault on Ethereum and hold the same amount of KUSD on Midnight, where only you can
+        see it. The card on the right is the live backing, read from both chains: the vault holds
+        107 dollars of USDC against 87 dollars of KUSD in circulation. The 20 dollar difference is
+        three test deposits that were swept but never claimed.
+      </aside>
+    </section>
+
+    <section id="problem" data-transition="fade">
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>The problem</p>
+      </div>
+      <h2 class="in" style="--i: 1; width: 1500px">
+        On a public chain, paying someone publishes it.
+      </h2>
+      <div style="display: flex; flex-direction: row; gap: 40px; margin-top: 72px">
+        <div class="card in" style="--i: 2; flex: 1; padding: 56px 60px; gap: 24px">
+          <p class="tag">A public stablecoin</p>
+          <h3>Every payment is readable</h3>
+          <p class="body" style="font-size: 32px">
+            A salary, a supplier’s price, a customer list: anyone can read them, and they stay on
+            the chain for good.
+          </p>
+        </div>
+        <div class="card in" style="--i: 3; flex: 1; padding: 56px 60px; gap: 24px">
+          <p class="tag">A privacy tool</p>
+          <h3>The money is hidden too</h3>
+          <p class="body" style="font-size: 32px">
+            The amounts disappear, and so does the reserve. You have to trust that the dollars
+            behind the token exist.
+          </p>
+        </div>
+      </div>
+      <p
+        class="in"
+        style="
+          --i: 4;
+          margin-top: 88px;
+          font-size: 40px;
+          color: #1b1815;
+          font-weight: 500;
+          width: 1500px;
+        "
+      >
+        Unbacked minting has broken stablecoins before. Private money that nobody can count is only
+        a promise.
+      </p>
+      <div class="foot">
+        <p>Kinko · Midnight Buildathon</p>
+        <p class="pg"></p>
+      </div>
+      <aside>
+        Two things usually go wrong with money held on a chain. On a public chain, every payment is
+        public: a business paying its staff publishes its payroll. Privacy tools fix that, but they
+        hide the reserve too, so you are asked to trust that the money exists. Kinko is built to fix
+        both at once.
+      </aside>
+    </section>
+
+    <section
+      id="answer"
+      class="accent"
+      data-transition="fade"
+      style="padding: 128px; justify-content: center"
+    >
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>Kinko’s answer</p>
+      </div>
+      <h1 class="in" style="--i: 1; margin-top: 40px; width: 1560px; font-size: 104px">
+        Payments private by default. The reserve public by default.
+      </h1>
+      <p class="in" style="--i: 2; margin-top: 48px; font-size: 40px; width: 1400px">
+        Both rules are enforced by contracts, not by a promise from us.
+      </p>
+      <p class="in" style="--i: 3; margin-top: 72px; font-size: 28px; opacity: 0.9">
+        金庫, kinko: Japanese for “a safe”.
+      </p>
+      <aside>
+        This is the whole idea in one line. Payments are shielded on Midnight, so the chain sees
+        that a valid payment happened, not the amount or the people. The reserve is public: anyone
+        can compare the USDC held in the vault on Ethereum with the KUSD in circulation on Midnight.
+        Neither depends on trusting Kinko.
+      </aside>
+    </section>
+
+    <section id="how" data-transition="fade">
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>How it works</p>
+      </div>
+      <h2 class="in" style="--i: 1">Four steps across two chains</h2>
+      <div style="display: flex; flex-direction: row; align-items: stretch; margin-top: 56px">
+        <div class="card in" style="--i: 2; width: 376px; gap: 16px">
+          <p class="tag">Ethereum</p>
+          <p class="big shu" style="font-size: 64px">1</p>
+          <h3 style="font-size: 36px">Deposit USDC</h3>
+          <p class="body">
+            Send USDC to an address Sig Network’s signers derive for you. Nobody holds its key.
+          </p>
+        </div>
+        <div style="width: 53px; display: flex; align-items: center; justify-content: center">
+          <svg aria-label="then" viewBox="0 0 40 24" width="40" height="24">
+            <path d="M2 12 H32" stroke="#c23a22" stroke-width="3" fill="none" />
+            <path
+              d="M26 4 L36 12 L26 20"
+              stroke="#c23a22"
+              stroke-width="3"
+              fill="none"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+            />
+          </svg>
+        </div>
+        <div class="card in" style="--i: 3; width: 376px; gap: 16px">
+          <p class="tag mid">Midnight</p>
+          <p class="big shu" style="font-size: 64px">2</p>
+          <h3 style="font-size: 36px">Mint KUSD</h3>
+          <p class="body">
+            The signers attest the deposit; the vault contract mints the same amount, shielded. No
+            attestation, no mint.
+          </p>
+        </div>
+        <div style="width: 53px; display: flex; align-items: center; justify-content: center">
+          <svg aria-label="then" viewBox="0 0 40 24" width="40" height="24">
+            <path d="M2 12 H32" stroke="#c23a22" stroke-width="3" fill="none" />
+            <path
+              d="M26 4 L36 12 L26 20"
+              stroke="#c23a22"
+              stroke-width="3"
+              fill="none"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+            />
+          </svg>
+        </div>
+        <div class="card in" style="--i: 4; width: 376px; gap: 16px">
+          <p class="tag mid">Midnight</p>
+          <p class="big shu" style="font-size: 64px">3</p>
+          <h3 style="font-size: 36px">Pay privately</h3>
+          <p class="body">
+            Invoices, @tags, refunds and cards. The chain sees that a valid payment happened, not
+            who or how much.
+          </p>
+        </div>
+        <div style="width: 53px; display: flex; align-items: center; justify-content: center">
+          <svg aria-label="then" viewBox="0 0 40 24" width="40" height="24">
+            <path d="M2 12 H32" stroke="#c23a22" stroke-width="3" fill="none" />
+            <path
+              d="M26 4 L36 12 L26 20"
+              stroke="#c23a22"
+              stroke-width="3"
+              fill="none"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+            />
+          </svg>
+        </div>
+        <div class="card in" style="--i: 5; width: 376px; gap: 16px">
+          <p class="tag">Ethereum</p>
+          <p class="big shu" style="font-size: 64px">4</p>
+          <h3 style="font-size: 36px">Withdraw</h3>
+          <p class="body">
+            Burn KUSD and name an address; the signers send the USDC from the vault.
+          </p>
+        </div>
+      </div>
+      <p class="in" style="--i: 6; margin-top: 44px; font-size: 30px">
+        The vault counts every mint and burn in public, so anyone can compare what circulates with
+        the USDC it holds.
+      </p>
+      <div class="foot">
+        <p>Kinko · Midnight Buildathon</p>
+        <p class="pg"></p>
+      </div>
+      <aside>
+        The vault is a Midnight contract that controls an Ethereum account through Sig Network’s
+        MPC, which Midnight calls Night Mode. A deposit goes to an address derived from the user’s
+        private identity. Sig’s signers sweep it into the vault and attest it, and only then does
+        the contract mint KUSD, under a fresh nonce that cannot be linked to the deposit.
+        Withdrawing burns KUSD and the signers send the USDC back.
+      </aside>
+    </section>
+
+    <section id="live" data-transition="fade">
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>Live today</p>
+      </div>
+      <h2 class="in" style="--i: 1">Open it now at kinko.knole.me</h2>
+      <div
+        style="
+          display: flex;
+          flex-direction: row;
+          gap: 64px;
+          margin-top: 44px;
+          align-items: flex-start;
+        "
+      >
+        <img
+          class="shot in"
+          style="--i: 2; width: 850px; height: 600px"
+          src="img/backing-crop.png"
+          alt="Kinko's Backing page on preprod: USDC held by the vault $107.00 on Ethereum, KUSD in circulation $87.00 on Midnight, fully backed, 122.98% covered."
+        />
+        <div style="display: flex; flex-direction: column; gap: 36px; width: 750px">
+          <div class="in" style="--i: 3; display: flex; flex-direction: column; gap: 8px">
+            <h3 style="font-size: 36px">No wallet needed</h3>
+            <p style="font-size: 28px">
+              The Backing, Examine and Verify pages, the docs and a seven-stop guided tour.
+            </p>
+          </div>
+          <div class="in" style="--i: 4; display: flex; flex-direction: column; gap: 8px">
+            <h3 style="font-size: 36px">No wallet, still paying</h3>
+            <p style="font-size: 28px">
+              A gift or PIN card pays an invoice with no wallet at all. Kinko’s sponsor pays the
+              network fee.
+            </p>
+          </div>
+          <div class="in" style="--i: 5; display: flex; flex-direction: column; gap: 8px">
+            <h3 style="font-size: 36px">Everything else</h3>
+            <p style="font-size: 28px">
+              A Midnight wallet such as 1AM, on Midnight preprod and Ethereum Sepolia.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="foot">
+        <p>The Backing page on preprod, read live from both chains</p>
+        <p class="pg"></p>
+      </div>
+      <aside>
+        This is the real preprod build, not a mock-up. The Backing page reads the USDC in the vault
+        on Ethereum and the KUSD supply counters on Midnight, and compares them. A judge can open
+        the site with no wallet and see the backing, the examiner log, the docs and the tour. The
+        invoice and PIN card flows were run against the hosted site itself and passed.
+      </aside>
+    </section>
+
+    <section id="lifecycle" data-transition="fade">
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>The product</p>
+      </div>
+      <h2 class="in" style="--i: 1">One account, the whole payment life cycle</h2>
+      <div
+        style="
+          display: flex;
+          flex-direction: row;
+          gap: 64px;
+          margin-top: 44px;
+          align-items: flex-start;
+        "
+      >
+        <img
+          class="shot in"
+          style="--i: 2; width: 640px; height: 582px"
+          src="img/refund-crop.png"
+          alt="A merchant on preprod refunds a $4.00 payment with the customer's refund code; the refund is confirmed on Midnight and goes to the payer's key."
+        />
+        <div
+          style="
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            column-gap: 48px;
+            row-gap: 34px;
+            width: 960px;
+          "
+        >
+          <div class="in" style="--i: 3">
+            <h3 style="font-size: 34px">Invoices</h3>
+            <p style="font-size: 26px">One payment, many payers, or a donation</p>
+          </div>
+          <div class="in" style="--i: 3">
+            <h3 style="font-size: 34px">Receipts and refunds</h3>
+            <p style="font-size: 26px">A refund can only return to the payer’s key</p>
+          </div>
+          <div class="in" style="--i: 4">
+            <h3 style="font-size: 34px">Pay by @tag</h3>
+            <p style="font-size: 26px">A name that resolves to private receiving keys</p>
+          </div>
+          <div class="in" style="--i: 4">
+            <h3 style="font-size: 34px">Batch pay</h3>
+            <p style="font-size: 26px">A payroll file, checked line by line, paid at once</p>
+          </div>
+          <div class="in" style="--i: 5">
+            <h3 style="font-size: 34px">Gift and PIN cards</h3>
+            <p style="font-size: 26px">Open and pay with no wallet</p>
+          </div>
+          <div class="in" style="--i: 5">
+            <h3 style="font-size: 34px">Priced in NIGHT</h3>
+            <p style="font-size: 26px">Paid in KUSD at a signed oracle rate</p>
+          </div>
+          <div class="in" style="--i: 6">
+            <h3 style="font-size: 34px">Examiner disclosure</h3>
+            <p style="font-size: 26px">Two of three keyholders open one case</p>
+          </div>
+          <div class="in" style="--i: 6">
+            <h3 style="font-size: 34px">Merchant tools</h3>
+            <p style="font-size: 26px">SDK, CLI, MCP server and hosted checkout</p>
+          </div>
+        </div>
+      </div>
+      <div class="foot">
+        <p>A merchant refunds a payment on preprod with the customer’s refund code</p>
+        <p class="pg"></p>
+      </div>
+      <aside>
+        Kinko is not just a private transfer. It covers what a business actually does with money:
+        requesting it, receiving it, refunding it, paying many people, and answering an auditor.
+        Every item here runs live on preprod. The screenshot shows a refund: the customer gives the
+        merchant a refund code, and the refund can only go back to the key bound into the customer’s
+        receipt, so it cannot be redirected.
+      </aside>
+    </section>
+
+    <section id="midnight" data-transition="fade">
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>Midnight integration</p>
+      </div>
+      <h2 class="in" style="--i: 1">What the chain sees, and what it never sees</h2>
+      <table class="t in" style="--i: 2; margin-top: 52px; font-size: 30px">
+        <tr>
+          <th style="width: 50%">On the public ledger</th>
+          <th style="width: 50%">Never on the ledger</th>
+        </tr>
+        <tr>
+          <td>An invoice commitment: an opaque hash</td>
+          <td>The amount, the merchant, the payout key, the payer</td>
+        </tr>
+        <tr>
+          <td>One nullifier per payment, which links to no one</td>
+          <td>Who paid, and the payer’s secret key</td>
+        </tr>
+        <tr>
+          <td>A receipt digest in a Merkle tree</td>
+          <td>What the receipt is worth</td>
+        </tr>
+        <tr>
+          <td>A tag saying a receipt was refunded</td>
+          <td>Where the refund went</td>
+        </tr>
+      </table>
+      <div
+        class="in"
+        style="
+          --i: 3;
+          display: flex;
+          flex-direction: row;
+          gap: 16px;
+          margin-top: 52px;
+          flex-wrap: wrap;
+        "
+      >
+        <p class="pill">Shielded KUSD coins</p>
+        <p class="pill">Witnesses kept on the device</p>
+        <p class="pill">Oracle signature checked inside the proof</p>
+        <p class="pill">Night Mode with Sig Network</p>
+      </div>
+      <p class="in" style="--i: 4; margin-top: 44px; font-size: 30px">
+        A test searches everything an observer can see for each private value. It must find none,
+        and it does.
+      </p>
+      <div class="foot">
+        <p>Kinko · Midnight Buildathon</p>
+        <p class="pg"></p>
+      </div>
+      <aside>
+        This is exactly which part needs privacy. kinko_pay stores an invoice as one commitment, a
+        persistentHash over the merchant, payout, amount, kind, asset, a fresh salt and the owner’s
+        tag, so equal invoices never look equal. Amounts and keys are witnesses that live on the
+        user’s device. A NIGHT-priced invoice checks the oracle’s Schnorr signature inside the
+        proof. The privacy-observer test makes the claim checkable: it runs real payments and
+        searches the ledger and every public transcript for each private value.
+      </aside>
+    </section>
+
+    <section id="contracts" data-transition="fade">
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>Engineering</p>
+      </div>
+      <h2 class="in" style="--i: 1">Five Compact contracts, live on preprod</h2>
+      <table class="t in" style="--i: 2; margin-top: 52px; font-size: 28px">
+        <tr>
+          <th style="width: 22%">Contract</th>
+          <th style="width: 12%">Circuits</th>
+          <th style="width: 40%">What it does</th>
+          <th style="width: 26%">Address</th>
+        </tr>
+        <tr>
+          <td>Vault</td>
+          <td>Sig’s, plus counters</td>
+          <td>Mints and burns KUSD against attested USDC; counts both in public</td>
+          <td class="mono">9b0c8e57…9523b8</td>
+        </tr>
+        <tr>
+          <td>kinko_pay</td>
+          <td>14</td>
+          <td>Invoices, settlement in KUSD or NIGHT, receipts, refunds, revenue proofs</td>
+          <td class="mono">4b1d82f3…54459c</td>
+        </tr>
+        <tr>
+          <td>kinko_tags</td>
+          <td>4</td>
+          <td>@names that resolve to receiving keys</td>
+          <td class="mono">8cc4d907…c99e1</td>
+        </tr>
+        <tr>
+          <td>kinko_gift</td>
+          <td>4</td>
+          <td>A registry that proves a card is genuine and not voided</td>
+          <td class="mono">d7c38b41…8dee7d</td>
+        </tr>
+        <tr>
+          <td>kinko_disclosure</td>
+          <td>5</td>
+          <td>Sealed records, opened only when two of three keyholders approve</td>
+          <td class="mono">37fb8cfd…23e4f8</td>
+        </tr>
+      </table>
+      <p
+        class="in"
+        style="--i: 3; margin-top: 48px; font-size: 32px; color: #1b1815; font-weight: 500"
+      >
+        A mint without the signers’ attestation is refused by the vault contract itself.
+      </p>
+      <div class="foot">
+        <p>Full addresses and deploy transactions: README, “Live contracts on Midnight preprod”</p>
+        <p class="pg"></p>
+      </div>
+      <aside>
+        The vault is adapted from Sig Network’s Night Mode example, with public mint and burn
+        counters added so the reserve can be checked. The four other contracts are Kinko’s own: 27
+        circuits between them that change state. Every address is in the README with its deploy
+        transaction, and deployments/preprod.json records them. kinko_pay was redeployed several
+        times as reviews found defects; this is the final one.
+      </aside>
+    </section>
+
+    <section id="evidence" data-transition="fade">
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>Tests and evidence</p>
+      </div>
+      <h2 class="in" style="--i: 1">Checked on both chains, not just on screen</h2>
+      <div style="display: flex; flex-direction: row; gap: 28px; margin-top: 48px">
+        <div class="card in" style="--i: 2; flex: 1; gap: 12px">
+          <p class="big shu" style="font-size: 76px">2,425</p>
+          <p class="label">unit, simulator and integration tests, all passing</p>
+        </div>
+        <div class="card in" style="--i: 3; flex: 1; gap: 12px">
+          <p class="big shu" style="font-size: 76px">12 of 12</p>
+          <p class="label">end-to-end flows pass live on preprod, each checked on both chains</p>
+        </div>
+        <div class="card in" style="--i: 4; flex: 1; gap: 12px">
+          <p class="big shu" style="font-size: 76px">114</p>
+          <p class="label">browser tests, on desktop and phone, light and dark</p>
+        </div>
+        <div class="card in" style="--i: 5; flex: 1; gap: 12px">
+          <p class="big shu" style="font-size: 76px">100%</p>
+          <p class="label">of the payment contracts’ asserts are tripped by a test</p>
+        </div>
+      </div>
+      <div
+        class="card in"
+        style="
+          --i: 6;
+          margin-top: 28px;
+          flex-direction: row;
+          align-items: center;
+          gap: 36px;
+          padding: 32px 40px;
+        "
+      >
+        <x-icon name="Verified" style="color: #2c6a4c; width: 56px; height: 56px"></x-icon>
+        <p style="font-size: 28px; color: #1b1815">
+          Three rounds of independent AI review. Every defect found is fixed and has a test that
+          fails when the fix is removed. Not a human audit.
+        </p>
+      </div>
+      <div class="foot">
+        <p>Run the flows yourself: yarn workspace @kinko/web e2e:live</p>
+        <p class="pg"></p>
+      </div>
+      <aside>
+        Every number here comes from the repository’s own test runs. The 12 live flows are deposit,
+        invoice payment, hosted checkout, refund, SDK invoices, batch pay, examiner disclosure, gift
+        card, PIN card, a NIGHT-priced invoice, pay by tag and withdraw. Each one waits for real
+        blocks and checks balances on both chains, not just the screen. The invoice and PIN card
+        flows were also run against the hosted site. The reviews were by separate AI agents,
+        read-only, asked to find defects; they are not a human audit and we say so.
+      </aside>
+    </section>
+
+    <section id="alternatives" data-transition="fade">
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>What exists today</p>
+      </div>
+      <h2 class="in" style="--i: 1">Private stablecoins are not new</h2>
+      <table class="t in" style="--i: 2; margin-top: 52px; font-size: 30px">
+        <tr>
+          <th style="width: 22%">Option</th>
+          <th style="width: 38%">What it is</th>
+          <th style="width: 40%">What Kinko adds</th>
+        </tr>
+        <tr>
+          <td>USDCx on Aleo</td>
+          <td>Private USDC on Aleo, issued and operated by Circle</td>
+          <td>On Midnight, with invoices, refunds, cards and disclosure</td>
+        </tr>
+        <tr>
+          <td>Railgun</td>
+          <td>A shielded pool on Ethereum</td>
+          <td>A backed dollar with a reserve anyone counts, and a payments layer</td>
+        </tr>
+        <tr>
+          <td>zk.money (Aztec)</td>
+          <td>A private payments wallet, relaunched in 2026</td>
+          <td>A checkable reserve and merchant tools</td>
+        </tr>
+        <tr>
+          <td>A custodial balance</td>
+          <td>Private only if the custodian says so; provable only by its report</td>
+          <td>Private payments and a public reserve</td>
+        </tr>
+      </table>
+      <p
+        class="in"
+        style="--i: 3; margin-top: 52px; font-size: 32px; color: #1b1815; font-weight: 500"
+      >
+        Kinko does not claim to be first. It claims a reserve anyone can count, the whole payment
+        life cycle, and cards that pay with no wallet.
+      </p>
+      <div class="foot">
+        <p>Sources for each row: README, “Alternatives, and what Kinko adds”</p>
+        <p class="pg"></p>
+      </div>
+      <aside>
+        These are the real substitutes, each described from its own project pages; the README links
+        every source. USDCx is the closest: private USDC, but Circle-issued and on a different
+        chain. Railgun is a general shielded pool, not a backed dollar with a public reserve check.
+        zk.money was relaunched by Aztec in 2026 with private payments but public deposits. Kinko’s
+        difference is the combination: a reserve any browser can verify, invoices through to refunds
+        and disclosure, and cards that pay with no wallet.
+      </aside>
+    </section>
+
+    <section id="business" data-transition="fade">
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>Business</p>
+      </div>
+      <h2 class="in" style="--i: 1">Who uses it, and who pays</h2>
+      <div
+        style="
+          display: flex;
+          flex-direction: row;
+          gap: 56px;
+          margin-top: 44px;
+          align-items: flex-start;
+        "
+      >
+        <div style="display: flex; flex-direction: column; gap: 30px; width: 640px">
+          <div class="in" style="--i: 2">
+            <h3 style="font-size: 34px">A business</h3>
+            <p style="font-size: 26px">
+              Pays staff and contractors from one file without publishing its payroll.
+            </p>
+          </div>
+          <div class="in" style="--i: 3">
+            <h3 style="font-size: 34px">A freelancer or shop</h3>
+            <p style="font-size: 26px">
+              Shares an @tag or a link, so one client’s payment never reveals another’s.
+            </p>
+          </div>
+          <div class="in" style="--i: 4">
+            <h3 style="font-size: 34px">An examiner</h3>
+            <p style="font-size: 26px">
+              An accountant or regulator sees only the records a case names, after approval.
+            </p>
+          </div>
+        </div>
+        <table class="t in" style="--i: 5; width: 968px; font-size: 26px">
+          <tr>
+            <th style="width: 52%">Revenue stream</th>
+            <th style="width: 48%">Status</th>
+          </tr>
+          <tr>
+            <td>A flat withdrawal fee</td>
+            <td>Live in the vault: $0.70 collected on preprod</td>
+          </tr>
+          <tr>
+            <td>Paid merchant tools: checkout, webhooks, SDK</td>
+            <td>Hypothesis: tools built, no price tested</td>
+          </tr>
+          <tr>
+            <td>Private payroll runs</td>
+            <td>Hypothesis: batch pay built, no price tested</td>
+          </tr>
+          <tr>
+            <td>Disclosure for audits</td>
+            <td>Hypothesis: no buyer asked yet</td>
+          </tr>
+        </table>
+      </div>
+      <p
+        class="in"
+        style="--i: 6; margin-top: 40px; font-size: 30px; color: #1b1815; font-weight: 500"
+      >
+        No revenue, pilot or paying user yet. The next step is one merchant pilot.
+      </p>
+      <div class="foot">
+        <p>Kinko · Midnight Buildathon</p>
+        <p class="pg"></p>
+      </div>
+      <aside>
+        Who pays is stated as hypotheses, because nothing has been sold. The withdrawal fee is real:
+        the vault charges it and has collected 70 cents on preprod. The other three streams use
+        tools that already exist: hosted checkout and the SDK, batch pay, and examiner disclosure.
+        No price has been tested and no customer discovery has been done, so no market size is
+        claimed. The first job after the buildathon is one real merchant using it.
+      </aside>
+    </section>
+
+    <section id="limits" data-transition="fade">
+      <div class="eyebrow in" style="--i: 0">
+        <div class="rule"></div>
+        <p>Limits and next steps</p>
+      </div>
+      <h2 class="in" style="--i: 1">What it does not do yet</h2>
+      <div style="display: flex; flex-direction: row; gap: 40px; margin-top: 44px">
+        <div class="card in" style="--i: 2; flex: 1; gap: 18px; padding: 40px 44px">
+          <h3 style="font-size: 36px">Limits, stated plainly</h3>
+          <ul style="font-size: 26px; line-height: 1.45; color: #4c453e; padding-left: 32px">
+            <li style="margin-bottom: 12px">Test networks only, and not audited by a human.</li>
+            <li style="margin-bottom: 12px">
+              Sig Network’s signers hold the vault key; a colluding threshold could move the USDC,
+              and the Backing page would show it.
+            </li>
+            <li style="margin-bottom: 12px">Deposits and withdrawals are public on Ethereum.</li>
+            <li style="margin-bottom: 12px">
+              Hosted from one machine; Ethereum-wallet sign-in waits for NightKit to serve preprod.
+            </li>
+          </ul>
+        </div>
+        <div class="card in" style="--i: 3; flex: 1; gap: 18px; padding: 40px 44px">
+          <h3 style="font-size: 36px">Next</h3>
+          <ul style="font-size: 26px; line-height: 1.45; color: #4c453e; padding-left: 32px">
+            <li style="margin-bottom: 12px">A human audit of the pay and vault contracts.</li>
+            <li style="margin-bottom: 12px">One merchant pilot.</li>
+            <li style="margin-bottom: 12px">Mainnet when Night Mode opens there.</li>
+            <li style="margin-bottom: 12px">
+              Fees sponsored for every action a new account takes.
+            </li>
+            <li style="margin-bottom: 12px">
+              Earning on idle balances, privately, through the vault’s Aave support.
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div class="foot">
+        <p>Full list: README, “Limits, stated plainly”, and docs/THREAT-MODEL.md</p>
+        <p class="pg"></p>
+      </div>
+      <aside>
+        Every limit here is also written in the README and the threat model. The biggest is trust in
+        Sig Network’s threshold signers, who hold the vault’s Ethereum key; the Backing page is the
+        check on them, because any loss would show within a block. The next steps are ordered by
+        what they unlock: an audit before real money, a pilot to prove demand, then mainnet.
+      </aside>
+    </section>
+
+    <section
+      id="close"
+      class="dark"
+      data-transition="fade"
+      style="padding: 128px 128px 112px; justify-content: space-between"
+    >
+      <div style="display: flex; flex-direction: column; gap: 40px">
+        <div class="eyebrow in" style="--i: 0">
+          <div class="rule"></div>
+          <p>Kinko 金庫</p>
+        </div>
+        <h1 class="in" style="--i: 1; width: 1500px">Private dollars, counted in public.</h1>
+      </div>
+      <div class="in" style="--i: 2; display: flex; flex-direction: row; gap: 28px">
+        <div
+          style="
+            flex: 1;
+            background: #2a2521;
+            border-radius: 24px;
+            padding: 36px 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          "
+        >
+          <p
+            style="
+              font-size: 24px;
+              font-weight: 600;
+              letter-spacing: 0.14em;
+              text-transform: uppercase;
+              color: #f0907e;
+            "
+          >
+            Try it
+          </p>
+          <p style="font-size: 36px; color: #fbf5ec; font-weight: 600">kinko.knole.me</p>
+        </div>
+        <div
+          style="
+            flex: 1;
+            background: #2a2521;
+            border-radius: 24px;
+            padding: 36px 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          "
+        >
+          <p
+            style="
+              font-size: 24px;
+              font-weight: 600;
+              letter-spacing: 0.14em;
+              text-transform: uppercase;
+              color: #f0907e;
+            "
+          >
+            Read the code
+          </p>
+          <p style="font-size: 36px; color: #fbf5ec; font-weight: 600">
+            github.com/Pratiikpy/kinko
+          </p>
+        </div>
+        <div
+          style="
+            flex: 1;
+            background: #2a2521;
+            border-radius: 24px;
+            padding: 36px 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          "
+        >
+          <p
+            style="
+              font-size: 24px;
+              font-weight: 600;
+              letter-spacing: 0.14em;
+              text-transform: uppercase;
+              color: #f0907e;
+            "
+          >
+            We are looking for
+          </p>
+          <p style="font-size: 36px; color: #fbf5ec; font-weight: 600">
+            A first merchant pilot, and an auditor
+          </p>
+        </div>
+      </div>
+      <p class="in small" style="--i: 3; color: #d9cfc2">
+        Built on Midnight. Night Mode with Sig Network. Wallet connection by NightKit, from 1AM.
+        Payments model after NullPay, used with its author’s permission. Apache-2.0.
+      </p>
+      <aside>
+        Thank you. The site is live at kinko.knole.me and needs no wallet to see the backing. All
+        code, including every Compact contract, is public under Apache-2.0. What would help most now
+        is a first merchant willing to pilot it, and a human audit before any real money.
+      </aside>
+    </section>
+  </body>
+</html>

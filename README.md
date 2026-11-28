@@ -10,6 +10,8 @@
 </p>
 
 <p align="center">
+  <b><a href="https://kinko.knole.me">Live app</a></b> ·
+  <b><a href="docs/deck/kinko-deck.pdf">Slide deck (PDF)</a></b> ·
   <b><a href="#how-judges-can-test-it">How judges can test it</a></b> ·
   <b><a href="#live-contracts-on-midnight-preprod">Deployed contracts</a></b> ·
   <b><a href="#how-it-works">Architecture</a></b> ·
@@ -43,6 +45,8 @@ Built for the [Midnight Buildathon](https://app.akindo.io/) on Midnight's Night 
 ## How judges can test it
 
 **Open it at [kinko.knole.me](https://kinko.knole.me).** It is the preprod build, with its backend, relayer, fee sponsor, snapshot service and proof server behind it. The Backing, Examine, Verify and Docs pages and the guided tour need no wallet; a gift or PIN card pays there with no wallet at all; everything else needs a Midnight wallet such as 1AM on preprod. The site is served from the developer's machine through a Cloudflare tunnel, so it answers while that machine is on (see [Limits](#limits-stated-plainly)).
+
+The pitch deck is in [`docs/deck/kinko-deck.pdf`](docs/deck/kinko-deck.pdf) (13 slides; the same deck as a web page in [`docs/deck/kinko-deck.html`](docs/deck/kinko-deck.html)).
 
 What you can verify without our server:
 
